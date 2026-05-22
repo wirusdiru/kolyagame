@@ -18,10 +18,63 @@ const TILE_COLORS: Record<TileType, [string, string]> = {
   sand: ["#c4a35a", "#a08040"],
 };
 
-const kolya1Img = new Image();
-kolya1Img.src = "/skins/kolya1.png";
-let kolya1ImgReady = false;
-kolya1Img.onload = () => { kolya1ImgReady = true; };
+function drawSkinOverlay(ctx: CanvasRenderingContext2D, skinId: KolyaSkinId, tick: number, isAlien: boolean) {
+  if (isAlien) return;
+
+  switch (skinId) {
+    case "raincoat":
+      ctx.fillStyle = "#ffcc00";
+      ctx.fillRect(-18, -22, 36, 38);
+      ctx.fillStyle = "#1a4488";
+      ctx.beginPath();
+      ctx.moveTo(-18, -22);
+      ctx.lineTo(0, -38);
+      ctx.lineTo(18, -22);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    case "kalyan":
+      ctx.fillStyle = "#4a2800";
+      ctx.fillRect(-16, -20, 32, 32);
+      ctx.fillStyle = "#c00";
+      ctx.fillRect(-14, -32, 28, 10);
+      ctx.fillStyle = "#222";
+      ctx.fillRect(8, -28, 14, 4);
+      break;
+    case "alien":
+      ctx.strokeStyle = "#0f8";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(-10, -52);
+      ctx.lineTo(-14, -64);
+      ctx.moveTo(10, -52);
+      ctx.lineTo(14, -64);
+      ctx.stroke();
+      break;
+    case "kolya1":
+      ctx.fillStyle = "#33cc33";
+      ctx.fillRect(-14, -18, 28, 28);
+      ctx.strokeStyle = `rgba(80,255,80,${0.6 + Math.sin(tick * 0.2) * 0.3})`;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(0, -35, 24, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = "#111";
+      ctx.fillRect(-12, -40, 10, 6);
+      ctx.fillRect(2, -40, 10, 6);
+      ctx.strokeStyle = "#44ff44";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(-12, -37);
+      ctx.lineTo(-8, -37);
+      ctx.moveTo(8, -37);
+      ctx.lineTo(12, -37);
+      ctx.stroke();
+      break;
+    default:
+      break;
+  }
+}
 
 export function drawTile(ctx: CanvasRenderingContext2D, type: TileType, x: number, y: number, tick: number) {
   const [c1, c2] = TILE_COLORS[type];
@@ -93,18 +146,6 @@ export function drawKolya(
   ctx.save();
   ctx.translate(x, y + bob);
 
-  if (skinId === "kolya1" && kolya1ImgReady) {
-    const pulse = 1 + Math.sin(tick * 0.12) * 0.04;
-    const w = 72 * pulse;
-    const h = 96 * pulse;
-    ctx.shadowColor = "#44ff44";
-    ctx.shadowBlur = 18 + Math.sin(tick * 0.15) * 8;
-    ctx.drawImage(kolya1Img, -w / 2, -h + 20, w, h);
-    ctx.shadowBlur = 0;
-    ctx.restore();
-    return;
-  }
-
   ctx.fillStyle = "rgba(0,0,0,0.25)";
   ctx.beginPath();
   ctx.ellipse(0, 28, 22, 8, 0, 0, Math.PI * 2);
@@ -117,12 +158,13 @@ export function drawKolya(
     alien: { skin: "#88ffaa", shirt: "#226633" },
     kolya1: { skin: "#aaff88", shirt: "#22aa22" },
   };
+  const effectiveSkin = isAlien ? "alien" : skinId;
   const pal = isAlien
     ? { skin: "#88ffaa", shirt: "#226633" }
-    : skinPalette[skinId] ?? skinPalette.default;
+    : skinPalette[effectiveSkin] ?? skinPalette.default;
   const skin = pal.skin;
   const shirt = pal.shirt;
-  const pants = skinId === "raincoat" ? "#1a3a5a" : "#223355";
+  const pants = skinId === "raincoat" ? "#1a3a5a" : skinId === "kolya1" ? "#1a4a1a" : "#223355";
 
   // Ноги (очень длинные — как чемодан)
   ctx.fillStyle = pants;
@@ -132,10 +174,10 @@ export function drawKolya(
   ctx.fillRect(-10, 34, 12, 6);
   ctx.fillRect(2, 34, 12, 6);
 
-  // Тело высокое
   ctx.fillStyle = shirt;
   ctx.fillRect(-14, -18, 28, 28);
-  // Вонь линии
+  drawSkinOverlay(ctx, effectiveSkin, tick, isAlien);
+
   if (!isAlien && skinId !== "kolya1") {
     ctx.strokeStyle = `rgba(150,255,0,${0.4 + Math.sin(tick * 0.15) * 0.3})`;
     for (let i = 0; i < 4; i++) {
@@ -186,14 +228,6 @@ export function drawKolya(
   ctx.fillRect(18, 0, 14, 18);
   ctx.fillStyle = "#66aaff";
   ctx.fillRect(20, 2, 10, 8);
-
-  if (skinId === "kolya1" && !isAlien) {
-    ctx.strokeStyle = `rgba(80,255,80,${0.5 + Math.sin(tick * 0.2) * 0.3})`;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(0, -35, 22, 0, Math.PI * 2);
-    ctx.stroke();
-  }
 
   if (isAlien) {
     ctx.strokeStyle = "#00ff88";

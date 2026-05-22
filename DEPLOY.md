@@ -6,7 +6,9 @@ GitHub Pages отдаёт только сайт. База — бесплатны
 
 1. https://supabase.com → Sign up → New project
 2. **SQL Editor** → New query → вставь файл `supabase/schema.sql` → **Run**
-3. **Project Settings → API** — скопируй:
+3. Ещё один запрос → вставь `supabase/online_rooms.sql` → **Run**
+4. **Database → Replication** → включи таблицу `online_rooms` для Realtime
+5. **Project Settings → API** — скопируй:
    - Project URL → `VITE_SUPABASE_URL`
    - anon public → `VITE_SUPABASE_ANON_KEY`
 

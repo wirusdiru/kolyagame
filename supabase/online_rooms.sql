@@ -1,0 +1,19 @@
+-- Добавь в Supabase SQL Editor (после schema.sql)
+-- Включи Realtime: Database → Replication → supabase_realtime → online_rooms
+
+create table if not exists online_rooms (
+  code text primary key,
+  host text not null,
+  members jsonb not null default '[]'::jsonb,
+  game_seed bigint,
+  started boolean not null default false,
+  updated_at timestamptz not null default now()
+);
+
+alter table online_rooms enable row level security;
+
+drop policy if exists "online_rooms_public" on online_rooms;
+create policy "online_rooms_public" on online_rooms
+  for all using (true) with check (true);
+
+grant select, insert, update, delete on online_rooms to anon, authenticated;

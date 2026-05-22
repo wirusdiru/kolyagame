@@ -471,71 +471,64 @@ export default function App() {
         }
       }
 
-      // Sabchak AI — следует за Колей, подбегает кусать
+      // Собак Семечкин — помощник: следует за Колей, иногда кусает (без стрельбы)
+      const SAB_FOLLOW_DIST = 140;
+      const SAB_TELEPORT_DIST = 580;
+      const SAB_BITE_RANGE = 42;
+      const biteDmgBase = 5 + Math.floor(sabDmgRef.current * 0.25) + (sabFuryRef.current ? 2 : 0);
+
       sabBitingRef.current = false;
+      const dToKolya = dist(sabXRef.current, sabYRef.current, kxRef.current, kyRef.current);
+
+      if (sabHpRef.current > 0 && dToKolya > SAB_TELEPORT_DIST) {
+        sabXRef.current = kxRef.current + 55;
+        sabYRef.current = kyRef.current + 35;
+        addFloat(sabXRef.current, sabYRef.current - 30, "Семечкин: ГАВ!", "#fb3");
+      } else if (sabHpRef.current > 0 && dToKolya > SAB_FOLLOW_DIST) {
+        const sdx = kxRef.current - sabXRef.current, sdy = kyRef.current - sabYRef.current;
+        const sl = Math.sqrt(sdx * sdx + sdy * sdy) || 1;
+        const nsx = sabXRef.current + (sdx / sl) * 3.4;
+        const nsy = sabYRef.current + (sdy / sl) * 3.4;
+        if (canMoveTo(nsx, nsy)) { sabXRef.current = nsx; sabYRef.current = nsy; }
+      }
+
       let biteTarget: Enemy | null = null;
       let biteDist = 999999;
       for (const en of enemiesRef.current) {
         if (en.hp <= 0) continue;
         const d = dist(sabXRef.current, sabYRef.current, en.x, en.y);
-        if (d < 55 && d < biteDist) { biteDist = d; biteTarget = en; }
+        if (d < 90 && d < biteDist) { biteDist = d; biteTarget = en; }
       }
 
-      if (biteTarget && sabHpRef.current > 0) {
+      if (biteTarget && sabHpRef.current > 0 && dToKolya < 220) {
         sabBitingRef.current = true;
         const bdx = biteTarget.x - sabXRef.current, bdy = biteTarget.y - sabYRef.current;
         const bl = Math.sqrt(bdx * bdx + bdy * bdy) || 1;
-        const chase = 4.2 + (sabFuryRef.current ? 1.2 : 0);
-        const nsx = sabXRef.current + (bdx / bl) * chase;
-        const nsy = sabYRef.current + (bdy / bl) * chase;
+        const nsx = sabXRef.current + (bdx / bl) * 3.6;
+        const nsy = sabYRef.current + (bdy / bl) * 3.6;
         if (canMoveTo(nsx, nsy)) { sabXRef.current = nsx; sabYRef.current = nsy; }
-        if (biteDist < 38 && sabAttackTimerRef.current <= 0) {
-          const biteDmg = sabDmgRef.current + (sabFuryRef.current ? 8 : 0);
+        if (biteDist < SAB_BITE_RANGE && sabAttackTimerRef.current <= 0) {
           const idx = enemiesRef.current.findIndex(e => e.id === biteTarget!.id);
           if (idx >= 0) {
-            enemiesRef.current[idx] = { ...enemiesRef.current[idx], hp: enemiesRef.current[idx].hp - biteDmg };
-            addFloat(biteTarget.x, biteTarget.y - 20, `УКУС -${biteDmg}`, "#fb3");
+            enemiesRef.current[idx] = { ...enemiesRef.current[idx], hp: enemiesRef.current[idx].hp - biteDmgBase };
+            addFloat(biteTarget.x, biteTarget.y - 20, `-${biteDmgBase}`, "#fb3");
             playSfx("bite");
-            sabAttackTimerRef.current = 35;
+            sabAttackTimerRef.current = 50;
             if (enemiesRef.current[idx].hp <= 0) {
               const en = enemiesRef.current[idx];
-              const pts = getEnemyPoints(en.type);
-              statsRef.current = { ...statsRef.current, score: statsRef.current.score + pts, enemiesKilled: statsRef.current.enemiesKilled + 1 };
+              statsRef.current = {
+                ...statsRef.current,
+                score: statsRef.current.score + getEnemyPoints(en.type),
+                enemiesKilled: statsRef.current.enemiesKilled + 1,
+              };
               waveEnemiesKilledRef.current += 1;
               enemiesRef.current = enemiesRef.current.filter(e => e.id !== en.id);
             }
           }
         }
-      } else {
-        const dSab = dist(sabXRef.current, sabYRef.current, kxRef.current, kyRef.current);
-        if (dSab > 100 && sabHpRef.current > 0) {
-          const sdx = kxRef.current - sabXRef.current, sdy = kyRef.current - sabYRef.current;
-          const sl = Math.sqrt(sdx * sdx + sdy * sdy) || 1;
-          const nsx = sabXRef.current + (sdx / sl) * 2.8;
-          const nsy = sabYRef.current + (sdy / sl) * 2.8;
-          if (canMoveTo(nsx, nsy)) { sabXRef.current = nsx; sabYRef.current = nsy; }
-        }
       }
-      if (sabAttackTimerRef.current > 0) sabAttackTimerRef.current -= 1;
 
-      if (tk % 45 === 0 && sabHpRef.current > 0 && !sabBitingRef.current) {
-        let closest: Enemy | null = null, closestD = 999999;
-        for (const en of enemiesRef.current) {
-          const d = dist(sabXRef.current, sabYRef.current, en.x, en.y);
-          if (d < closestD) { closestD = d; closest = en; }
-        }
-        const target = closest ?? (bossRef.current ? { x: bossRef.current.x, y: bossRef.current.y } : null);
-        if (target && (closestD < 450 || bossRef.current)) {
-          const dx = target.x - sabXRef.current, dy = target.y - sabYRef.current;
-          const dl = Math.sqrt(dx * dx + dy * dy) || 1;
-          projRef.current = [...projRef.current, {
-            id: nextId(), x: sabXRef.current, y: sabYRef.current,
-            vx: (dx / dl) * 10, vy: (dy / dl) * 10,
-            type: "bone", owner: "sabchak", dmg: sabDmgRef.current, life: 70,
-          }];
-          sabAttackTimerRef.current = 40;
-        }
-      }
+      if (sabAttackTimerRef.current > 0) sabAttackTimerRef.current -= 1;
 
       // Враги слишком далеко — телепорт ближе к Коле
       const CATCHUP_DIST = 720;
@@ -569,8 +562,8 @@ export default function App() {
       const doubleSpawn = st.wave % 3 === 0;
       if (!bossActiveRef.current) {
         spawnTimerRef.current += 1;
-        const spawnInterval = Math.max(55, 200 - st.wave * 7);
-        const spawnCount = doubleSpawn ? 2 : 1;
+        const spawnInterval = Math.max(38, 165 - st.wave * 6);
+        const spawnCount = doubleSpawn ? 3 : st.wave > 4 ? 2 : 1;
         if (spawnTimerRef.current >= spawnInterval && enemiesPerWaveRef.current < waveTargetRef.current) {
           spawnTimerRef.current = 0;
           for (let i = 0; i < spawnCount; i++) {
@@ -940,7 +933,11 @@ export default function App() {
 
       <div className="hud-layer">
         <div className="hud-panel" style={{ top: 12, left: 12 }}>
-          <div style={{ color: "#fff", fontSize: 12 }}><b style={{ color: "#fd0" }}>КОЛЯ</b> <span style={{ color: "#888", fontSize: 10 }}>"{nickname}"</span></div>
+          <div style={{ color: "#fff", fontSize: 12 }}>
+            <b style={{ color: "#fd0" }}>КОЛЯ</b>
+            <span style={{ color: "#8cf", fontSize: 10 }}> [{kolyaSkin}]</span>
+            <span style={{ color: "#888", fontSize: 10 }}> "{nickname}"</span>
+          </div>
           <div className="hud-bar" style={{ width: 200 }}><div className="hud-bar-fill" style={{ width: `${hpPct}%`, background: hpPct > 50 ? "#4f4" : hpPct > 25 ? "#fa0" : "#f22" }} /></div>
           <div style={{ color: "#fff", fontSize: 10 }}>HP {kolyaHp}/{kolyaMaxHp}</div>
           <div className="hud-bar" style={{ width: 200, height: 8 }}><div className="hud-bar-fill" style={{ width: `${(water / waterCap) * 100}%`, background: "#48f" }} /></div>

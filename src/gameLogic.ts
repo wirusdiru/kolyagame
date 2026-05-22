@@ -30,30 +30,30 @@ export function spawnEnemy(wave: number, playerX: number, playerY: number, world
   const y = pos.y;
 
   const hpMap: Record<Enemy["type"], number> = {
-    vyaly_step: 10 + wave * 2,
-    router: 7 + wave * 2,
-    lag_ball: 4 + wave,
-    tree_ghost: 11 + wave * 2,
-    wifi_drone: 6 + wave * 2,
-    cable_snake: 8 + wave * 2,
-    lag_ghost: 10 + wave * 2,
-    provider_golem: 16 + wave * 3,
-    child_swarm: 5 + Math.floor(wave / 2),
-    rain_drop: 5 + wave,
-    kalyan_spirit: 13 + wave * 2,
+    vyaly_step: 18 + wave * 4,
+    router: 14 + wave * 3,
+    lag_ball: 10 + wave * 2,
+    tree_ghost: 20 + wave * 4,
+    wifi_drone: 12 + wave * 3,
+    cable_snake: 16 + wave * 3,
+    lag_ghost: 18 + wave * 4,
+    provider_golem: 28 + wave * 5,
+    child_swarm: 10 + wave * 2,
+    rain_drop: 11 + wave * 2,
+    kalyan_spirit: 22 + wave * 4,
   };
   const speedMap: Record<Enemy["type"], number> = {
-    vyaly_step: 1.1 + wave * 0.06,
-    router: 0.75 + wave * 0.04,
-    lag_ball: 2.0 + wave * 0.09,
-    tree_ghost: 0.55 + wave * 0.035,
-    wifi_drone: 2.3 + wave * 0.1,
-    cable_snake: 1.6 + wave * 0.08,
-    lag_ghost: 0.95 + wave * 0.055,
-    provider_golem: 0.48 + wave * 0.028,
-    child_swarm: 2.6 + wave * 0.11,
-    rain_drop: 2.8 + wave * 0.12,
-    kalyan_spirit: 1.3 + wave * 0.075,
+    vyaly_step: 1.25 + wave * 0.07,
+    router: 0.85 + wave * 0.05,
+    lag_ball: 2.15 + wave * 0.1,
+    tree_ghost: 0.62 + wave * 0.04,
+    wifi_drone: 2.45 + wave * 0.11,
+    cable_snake: 1.75 + wave * 0.09,
+    lag_ghost: 1.05 + wave * 0.06,
+    provider_golem: 0.55 + wave * 0.03,
+    child_swarm: 2.75 + wave * 0.12,
+    rain_drop: 2.95 + wave * 0.13,
+    kalyan_spirit: 1.45 + wave * 0.08,
   };
   const hp = hpMap[type];
   return {
@@ -100,7 +100,7 @@ export function spawnItem(x: number, y: number, forceType?: ItemType): Item {
 export { isBossWave };
 
 export function getWaveTarget(wave: number): number {
-  return 8 + wave * 3 + Math.floor(wave / 5) * 4;
+  return 12 + wave * 4 + Math.floor(wave / 5) * 6;
 }
 
 export function getEnemyPoints(type: Enemy["type"]): number {
@@ -138,7 +138,7 @@ export function applyUpgrades(
     stinkDmg: 5 + up.stinkPower * 2,
     alienCd: Math.max(240, Math.floor(600 * (1 - up.alienCdReduce * 0.06))),
     alienDurRatio: 0.25 + alienDurBonus,
-    sabDmg: 12 + up.sabDmg * 3,
+    sabDmg: 12 + up.sabDmg * 2,
     waterPerShot: Math.max(1.5, 3 - up.waterEfficiency * 0.2 - (abilities?.water_splash ? 1 : 0)),
     stinkRadiusMult: 1 + (abilities?.stink_mega ? 0.25 : 0),
     regenOnStink: up.regenBoost,

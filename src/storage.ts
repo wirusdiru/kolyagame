@@ -15,6 +15,40 @@ const DEFAULT_UPGRADES: PlayerUpgrades = {
   waterEfficiency: 0, regenBoost: 0, alienDuration: 0,
 };
 
+/** Скины/способности в upgrades json — синхронизируются с Supabase */
+interface UpgradesPayload extends PlayerUpgrades {
+  __meta?: {
+    abilities?: OwnedAbilities;
+    ownedKolyaSkins?: KolyaSkinId[];
+    ownedSabSkins?: SabSkinId[];
+    equippedKolyaSkin?: KolyaSkinId;
+    equippedSabSkin?: SabSkinId;
+    friends?: FriendEntry[];
+  };
+}
+
+function packUpgrades(profile: UserProfile): UpgradesPayload {
+  return {
+    ...profile.upgrades,
+    __meta: {
+      abilities: profile.abilities,
+      ownedKolyaSkins: profile.ownedKolyaSkins,
+      ownedSabSkins: profile.ownedSabSkins,
+      equippedKolyaSkin: profile.equippedKolyaSkin,
+      equippedSabSkin: profile.equippedSabSkin,
+      friends: profile.friends,
+    },
+  };
+}
+
+function unpackUpgrades(raw: UpgradesPayload): {
+  upgrades: PlayerUpgrades;
+  meta: UpgradesPayload["__meta"];
+} {
+  const { __meta, ...upgrades } = raw;
+  return { upgrades: { ...DEFAULT_UPGRADES, ...upgrades }, meta: __meta };
+}
+
 export interface Session {
   username: string;
   passwordHash: string;
@@ -98,15 +132,22 @@ function mergeExtras(profile: UserProfile): UserProfile {
 }
 
 function rowToProfile(row: Record<string, unknown>): UserProfile {
-  const upgrades = (row.upgrades as PlayerUpgrades) ?? { ...DEFAULT_UPGRADES };
+  const rawUp = (row.upgrades as UpgradesPayload) ?? { ...DEFAULT_UPGRADES };
+  const { upgrades, meta } = unpackUpgrades(rawUp);
   const base = defaultProfile(String(row.username), String(row.password_hash));
-  return mergeExtras({
+  return migrateSkins(mergeExtras({
     ...base,
     totalCoins: Number(row.total_coins ?? 0),
-    upgrades: { ...DEFAULT_UPGRADES, ...upgrades },
+    upgrades,
+    abilities: { ...DEFAULT_ABILITIES, ...meta?.abilities },
+    ownedKolyaSkins: meta?.ownedKolyaSkins ?? ["default"],
+    ownedSabSkins: meta?.ownedSabSkins ?? ["default"],
+    equippedKolyaSkin: meta?.equippedKolyaSkin ?? "default",
+    equippedSabSkin: meta?.equippedSabSkin ?? "default",
+    friends: meta?.friends ?? [],
     gamesPlayed: Number(row.games_played ?? 0),
     bestScore: Number(row.best_score ?? 0),
-  });
+  }));
 }
 
 function loadUsers(): Record<string, UserProfile> {
@@ -118,7 +159,7 @@ function loadUsers(): Record<string, UserProfile> {
       out[k] = mergeExtras({
         ...defaultProfile(p.username ?? k, p.passwordHash ?? ""),
         ...p,
-        upgrades: { ...DEFAULT_UPGRADES, ...p.upgrades },
+        upgrades: unpackUpgrades(p.upgrades as UpgradesPayload).upgrades,
         abilities: { ...DEFAULT_ABILITIES, ...p.abilities },
         ownedKolyaSkins: p.ownedKolyaSkins ?? ["default"],
         ownedSabSkins: p.ownedSabSkins ?? ["default"],
@@ -220,7 +261,7 @@ async function cloudSaveProfile(profile: UserProfile, session: Session): Promise
     p_username: session.username,
     p_password_hash: session.passwordHash,
     p_total_coins: profile.totalCoins,
-    p_upgrades: profile.upgrades,
+    p_upgrades: packUpgrades(profile),
     p_games_played: profile.gamesPlayed,
     p_best_score: profile.bestScore,
   });

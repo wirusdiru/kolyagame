@@ -253,8 +253,8 @@ export default function MenuScreen({ onStartSolo, onStartOnline, user, serverOnl
                 {onlineMsg && <p className="coop-msg">{onlineMsg}</p>}
                 <p className="menu-hint online-note">
                   {isCloudEnabled
-                    ? "Разные ПК: нужен Supabase в .env (см. DEPLOY.md)"
-                    : "Без Supabase: 2 вкладки на одном ПК с одним кодом"}
+                    ? "Между ПК: выполни online_rooms.sql в Supabase (DEPLOY.md)"
+                    : "Без Supabase: только 2 вкладки на одном ПК"}
                 </p>
               </div>
             )}
