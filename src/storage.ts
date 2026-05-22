@@ -1,5 +1,6 @@
 import type {
-  AbilityId, FriendEntry, KolyaSkinId, LeaderboardEntry,
+  AbilityId, FriendEntry, FriendPublicStatus, FriendRequestEntry,
+  KolyaSkinId, LeaderboardEntry,
   OwnedAbilities, PlayerUpgrades, SabSkinId, UserProfile,
 } from "./types";
 import { DEFAULT_ABILITIES } from "./constants";
@@ -24,6 +25,10 @@ interface UpgradesPayload extends PlayerUpgrades {
     equippedKolyaSkin?: KolyaSkinId;
     equippedSabSkin?: SabSkinId;
     friends?: FriendEntry[];
+    friendRequestsIn?: FriendRequestEntry[];
+    friendRequestsOut?: FriendRequestEntry[];
+    lastSeenAt?: string;
+    isPlaying?: boolean;
   };
 }
 
@@ -37,6 +42,10 @@ function packUpgrades(profile: UserProfile): UpgradesPayload {
       equippedKolyaSkin: profile.equippedKolyaSkin,
       equippedSabSkin: profile.equippedSabSkin,
       friends: profile.friends,
+      friendRequestsIn: profile.friendRequestsIn,
+      friendRequestsOut: profile.friendRequestsOut,
+      lastSeenAt: profile.lastSeenAt,
+      isPlaying: profile.isPlaying,
     },
   };
 }
@@ -87,9 +96,29 @@ function defaultProfile(username: string, passwordHash: string): UserProfile {
     equippedKolyaSkin: "default",
     equippedSabSkin: "default",
     friends: [],
+    friendRequestsIn: [],
+    friendRequestsOut: [],
+    lastSeenAt: new Date().toISOString(),
+    isPlaying: false,
     gamesPlayed: 0,
     bestScore: 0,
   };
+}
+
+function normalizeProfile(p: UserProfile): UserProfile {
+  return {
+    ...p,
+    friends: p.friends ?? [],
+    friendRequestsIn: p.friendRequestsIn ?? [],
+    friendRequestsOut: p.friendRequestsOut ?? [],
+    lastSeenAt: p.lastSeenAt ?? new Date().toISOString(),
+    isPlaying: p.isPlaying ?? false,
+  };
+}
+
+function hasFriend(profile: UserProfile, name: string): boolean {
+  const n = name.toLowerCase();
+  return profile.friends.some(f => f.username.toLowerCase() === n);
 }
 
 function loadExtras(): Record<string, Partial<UserProfile>> {
@@ -128,6 +157,10 @@ function mergeExtras(profile: UserProfile): UserProfile {
     equippedKolyaSkin: ex.equippedKolyaSkin ?? base.equippedKolyaSkin,
     equippedSabSkin: ex.equippedSabSkin ?? base.equippedSabSkin,
     friends: ex.friends ?? base.friends,
+    friendRequestsIn: ex.friendRequestsIn ?? base.friendRequestsIn,
+    friendRequestsOut: ex.friendRequestsOut ?? base.friendRequestsOut,
+    lastSeenAt: ex.lastSeenAt ?? base.lastSeenAt,
+    isPlaying: ex.isPlaying ?? base.isPlaying,
   });
 }
 
@@ -145,6 +178,10 @@ function rowToProfile(row: Record<string, unknown>): UserProfile {
     equippedKolyaSkin: meta?.equippedKolyaSkin ?? "default",
     equippedSabSkin: meta?.equippedSabSkin ?? "default",
     friends: meta?.friends ?? [],
+    friendRequestsIn: meta?.friendRequestsIn ?? [],
+    friendRequestsOut: meta?.friendRequestsOut ?? [],
+    lastSeenAt: String(row.last_seen_at ?? meta?.lastSeenAt ?? new Date().toISOString()),
+    isPlaying: Boolean(row.is_playing ?? meta?.isPlaying ?? false),
     gamesPlayed: Number(row.games_played ?? 0),
     bestScore: Number(row.best_score ?? 0),
   }));
@@ -166,6 +203,10 @@ function loadUsers(): Record<string, UserProfile> {
         equippedKolyaSkin: p.equippedKolyaSkin ?? "default",
         equippedSabSkin: p.equippedSabSkin ?? "default",
         friends: p.friends ?? [],
+        friendRequestsIn: p.friendRequestsIn ?? [],
+        friendRequestsOut: p.friendRequestsOut ?? [],
+        lastSeenAt: p.lastSeenAt,
+        isPlaying: p.isPlaying ?? false,
       });
     }
     return out;
@@ -243,7 +284,7 @@ async function cloudFetchProfile(session: Session): Promise<UserProfile | null> 
   if (error || !data) return null;
   const res = data as { ok: boolean; profile?: Record<string, unknown> };
   if (!res.ok || !res.profile) return null;
-  return rowToProfile(res.profile);
+  return normalizeProfile(rowToProfile(res.profile));
 }
 
 async function cloudSaveProfile(profile: UserProfile, session: Session): Promise<boolean> {
@@ -256,6 +297,10 @@ async function cloudSaveProfile(profile: UserProfile, session: Session): Promise
     equippedKolyaSkin: profile.equippedKolyaSkin,
     equippedSabSkin: profile.equippedSabSkin,
     friends: profile.friends,
+    friendRequestsIn: profile.friendRequestsIn,
+    friendRequestsOut: profile.friendRequestsOut,
+    lastSeenAt: profile.lastSeenAt,
+    isPlaying: profile.isPlaying,
   });
   const { data, error } = await sb.rpc("update_profile", {
     p_username: session.username,
@@ -293,7 +338,7 @@ export async function fetchCurrentUser(): Promise<UserProfile | null> {
 
   const u = loadUsers()[session.username];
   if (!u || u.passwordHash !== session.passwordHash) return null;
-  return u;
+  return normalizeProfile(u);
 }
 
 export async function saveUserProfile(profile: UserProfile): Promise<void> {
@@ -362,26 +407,267 @@ export async function equipSabSkin(id: SabSkinId): Promise<boolean> {
   return true;
 }
 
-export async function addFriend(friendName: string): Promise<{ ok: boolean; error?: string }> {
+export async function sendFriendRequest(friendName: string): Promise<{ ok: boolean; error?: string }> {
   const u = await fetchCurrentUser();
   if (!u) return { ok: false, error: "Войди в аккаунт" };
   const name = friendName.trim();
+  const key = name.toLowerCase();
   if (name.length < 2) return { ok: false, error: "Ник слишком короткий" };
-  if (name.toLowerCase() === u.username.toLowerCase()) return { ok: false, error: "Это ты" };
-  if (u.friends.some(f => f.username.toLowerCase() === name.toLowerCase())) {
-    return { ok: false, error: "Уже в друзьях" };
+  if (key === u.username.toLowerCase()) return { ok: false, error: "Это ты" };
+  if (hasFriend(u, name)) return { ok: false, error: "Уже в друзьях" };
+  if (u.friendRequestsOut.some(r => r.username.toLowerCase() === key)) {
+    return { ok: false, error: "Заявка уже отправлена" };
+  }
+
+  if (isCloudEnabled) {
+    const session = getSession();
+    if (!session) return { ok: false, error: "Нет сессии" };
+    const sb = await getSupabase();
+    if (!sb) return { ok: false, error: "Сервер недоступен" };
+    const { data, error } = await sb.rpc("send_friend_request", {
+      p_username: session.username,
+      p_password_hash: session.passwordHash,
+      p_target: name,
+    });
+    if (error) return { ok: false, error: error.message };
+    const res = data as { ok: boolean; error?: string };
+    if (!res.ok) return { ok: false, error: res.error ?? "Ошибка" };
+    await syncFriendRequestsFromCloud(session);
+    return { ok: true };
+  }
+
+  const users = loadUsers();
+  const target = users[key];
+  if (!target) return { ok: false, error: "Нет такого игрока — он должен зарегистрироваться" };
+  if (hasFriend(target, u.username)) return { ok: false, error: "Уже в друзьях" };
+  const at = new Date().toISOString();
+  const me = normalizeProfile(users[u.username] ?? u);
+  me.friendRequestsOut = [...me.friendRequestsOut.filter(r => r.username.toLowerCase() !== key), { username: name, at }];
+  target.friendRequestsIn = [...(target.friendRequestsIn ?? []).filter(r => r.username.toLowerCase() !== u.username), { username: u.username, at }];
+  users[u.username] = me;
+  users[key] = normalizeProfile(target);
+  saveUsers(users);
+  return { ok: true };
+}
+
+async function syncFriendRequestsFromCloud(session: Session): Promise<void> {
+  const sb = await getSupabase();
+  if (!sb) return;
+  const { data } = await sb.rpc("get_friend_requests", {
+    p_username: session.username,
+    p_password_hash: session.passwordHash,
+  });
+  const res = data as { ok?: boolean; incoming?: FriendRequestEntry[]; outgoing?: FriendRequestEntry[] };
+  if (!res?.ok) return;
+  const u = await fetchCurrentUser();
+  if (!u) return;
+  u.friendRequestsIn = (res.incoming ?? []).map(r => ({
+    username: r.username,
+    at: r.at ?? new Date().toISOString(),
+  }));
+  u.friendRequestsOut = (res.outgoing ?? []).map(r => ({
+    username: r.username,
+    at: r.at ?? new Date().toISOString(),
+  }));
+  await saveUserProfile(u);
+}
+
+export async function acceptFriendRequest(fromName: string): Promise<{ ok: boolean; error?: string }> {
+  const u = await fetchCurrentUser();
+  if (!u) return { ok: false, error: "Войди в аккаунт" };
+  const from = fromName.trim().toLowerCase();
+  if (!u.friendRequestsIn.some(r => r.username.toLowerCase() === from)) {
+    return { ok: false, error: "Нет заявки" };
   }
   if (u.friends.length >= 20) return { ok: false, error: "Макс 20 друзей" };
-  u.friends.push({ username: name, addedAt: new Date().toISOString() });
-  await saveUserProfile(u);
+
+  if (isCloudEnabled) {
+    const session = getSession();
+    if (!session) return { ok: false, error: "Нет сессии" };
+    const sb = await getSupabase();
+    if (!sb) return { ok: false, error: "Сервер недоступен" };
+    const { data, error } = await sb.rpc("respond_friend_request", {
+      p_username: session.username,
+      p_password_hash: session.passwordHash,
+      p_from: fromName,
+      p_accept: true,
+    });
+    if (error) return { ok: false, error: error.message };
+    const res = data as { ok: boolean; error?: string };
+    if (!res.ok) return { ok: false, error: res.error ?? "Ошибка" };
+    const fresh = await cloudFetchProfile(session);
+    if (fresh) await saveUserProfile(fresh);
+    await syncFriendRequestsFromCloud(session);
+    return { ok: true };
+  }
+
+  const users = loadUsers();
+  const me = normalizeProfile(users[u.username] ?? u);
+  const other = users[from];
+  if (!other) return { ok: false, error: "Игрок не найден" };
+  const at = new Date().toISOString();
+  me.friendRequestsIn = me.friendRequestsIn.filter(r => r.username.toLowerCase() !== from);
+  me.friendRequestsOut = me.friendRequestsOut.filter(r => r.username.toLowerCase() !== from);
+  other.friendRequestsOut = (other.friendRequestsOut ?? []).filter(r => r.username.toLowerCase() !== u.username);
+  other.friendRequestsIn = (other.friendRequestsIn ?? []).filter(r => r.username.toLowerCase() !== u.username);
+  if (!hasFriend(me, fromName)) {
+    me.friends.push({ username: other.username, addedAt: at });
+  }
+  if (!hasFriend(other, u.username)) {
+    other.friends.push({ username: me.username, addedAt: at });
+  }
+  users[u.username] = me;
+  users[from] = normalizeProfile(other);
+  saveUsers(users);
   return { ok: true };
+}
+
+export async function declineFriendRequest(fromName: string): Promise<{ ok: boolean; error?: string }> {
+  const u = await fetchCurrentUser();
+  if (!u) return { ok: false, error: "Войди в аккаунт" };
+  const from = fromName.trim().toLowerCase();
+
+  if (isCloudEnabled) {
+    const session = getSession();
+    if (!session) return { ok: false, error: "Нет сессии" };
+    const sb = await getSupabase();
+    if (!sb) return { ok: false, error: "Сервер недоступен" };
+    const { data, error } = await sb.rpc("respond_friend_request", {
+      p_username: session.username,
+      p_password_hash: session.passwordHash,
+      p_from: fromName,
+      p_accept: false,
+    });
+    if (error) return { ok: false, error: error.message };
+    await syncFriendRequestsFromCloud(session);
+    return { ok: true };
+  }
+
+  const users = loadUsers();
+  const me = normalizeProfile(users[u.username] ?? u);
+  me.friendRequestsIn = me.friendRequestsIn.filter(r => r.username.toLowerCase() !== from);
+  users[u.username] = me;
+  saveUsers(users);
+  return { ok: true };
+}
+
+export async function cancelFriendRequest(targetName: string): Promise<void> {
+  const u = await fetchCurrentUser();
+  if (!u) return;
+  const key = targetName.trim().toLowerCase();
+
+  if (isCloudEnabled) {
+    const session = getSession();
+    if (!session) return;
+    const sb = await getSupabase();
+    if (sb) {
+      await sb.rpc("cancel_friend_request", {
+        p_username: session.username,
+        p_password_hash: session.passwordHash,
+        p_target: targetName,
+      });
+      await syncFriendRequestsFromCloud(session);
+    }
+    return;
+  }
+
+  const users = loadUsers();
+  const me = normalizeProfile(users[u.username] ?? u);
+  me.friendRequestsOut = me.friendRequestsOut.filter(r => r.username.toLowerCase() !== key);
+  const target = users[key];
+  if (target) {
+    target.friendRequestsIn = (target.friendRequestsIn ?? []).filter(r => r.username.toLowerCase() !== u.username);
+    users[key] = normalizeProfile(target);
+  }
+  users[u.username] = me;
+  saveUsers(users);
+}
+
+export async function refreshFriendRequests(): Promise<void> {
+  const session = getSession();
+  if (!session || !isCloudEnabled) return;
+  await syncFriendRequestsFromCloud(session);
+}
+
+export async function getFriendsStatus(): Promise<FriendPublicStatus[]> {
+  const u = await fetchCurrentUser();
+  if (!u || u.friends.length === 0) return [];
+
+  const names = u.friends.map(f => f.username);
+
+  if (isCloudEnabled) {
+    const sb = await getSupabase();
+    if (sb) {
+      const { data, error } = await sb.rpc("get_users_status", { p_usernames: names });
+      if (!error && Array.isArray(data)) {
+        return (data as FriendPublicStatus[]).map(s => ({
+          username: s.username,
+          bestScore: Number(s.bestScore ?? 0),
+          lastSeenAt: s.lastSeenAt ?? null,
+          isPlaying: Boolean(s.isPlaying),
+        }));
+      }
+    }
+  }
+
+  const users = loadUsers();
+  const now = Date.now();
+  return names.map(name => {
+    const p = users[name.toLowerCase()];
+    const last = p?.lastSeenAt ? Date.parse(p.lastSeenAt) : 0;
+    const online = Boolean(p?.isPlaying) && now - last < 120_000;
+    return {
+      username: name,
+      bestScore: p?.bestScore ?? 0,
+      lastSeenAt: p?.lastSeenAt ?? null,
+      isPlaying: online,
+    };
+  });
+}
+
+export async function setPresence(isPlaying: boolean): Promise<void> {
+  const u = await fetchCurrentUser();
+  if (!u) return;
+  const session = getSession();
+  if (!session) return;
+
+  u.lastSeenAt = new Date().toISOString();
+  u.isPlaying = isPlaying;
+
+  if (isCloudEnabled) {
+    const sb = await getSupabase();
+    if (sb) {
+      await sb.rpc("set_presence", {
+        p_username: session.username,
+        p_password_hash: session.passwordHash,
+        p_is_playing: isPlaying,
+      });
+    }
+    await saveUserProfile(u);
+    return;
+  }
+
+  const users = loadUsers();
+  users[u.username] = normalizeProfile({ ...u, lastSeenAt: u.lastSeenAt, isPlaying });
+  saveUsers(users);
 }
 
 export async function removeFriend(friendName: string): Promise<void> {
   const u = await fetchCurrentUser();
   if (!u) return;
-  u.friends = u.friends.filter(f => f.username.toLowerCase() !== friendName.toLowerCase());
+  const key = friendName.toLowerCase();
+  u.friends = u.friends.filter(f => f.username.toLowerCase() !== key);
   await saveUserProfile(u);
+
+  if (!isCloudEnabled) {
+    const users = loadUsers();
+    const other = users[key];
+    if (other) {
+      other.friends = other.friends.filter(f => f.username.toLowerCase() !== u.username.toLowerCase());
+      users[key] = normalizeProfile(other);
+      saveUsers(users);
+    }
+  }
 }
 
 export async function recordGameEnd(score: number, wave: number, coinsEarned: number): Promise<void> {
@@ -401,7 +687,19 @@ export async function recordGameEnd(score: number, wave: number, coinsEarned: nu
   u.gamesPlayed += 1;
   u.totalCoins += coinsEarned;
   u.bestScore = Math.max(u.bestScore, score);
+  u.lastSeenAt = new Date().toISOString();
+  u.isPlaying = false;
   await saveUserProfile(u);
+  if (isCloudEnabled) {
+    const sb = await getSupabase();
+    if (sb && session) {
+      await sb.rpc("set_presence", {
+        p_username: session.username,
+        p_password_hash: session.passwordHash,
+        p_is_playing: false,
+      });
+    }
+  }
 }
 
 function addLeaderboardEntryLocal(username: string, score: number, wave: number) {
@@ -460,4 +758,19 @@ export async function getEquippedSkins(): Promise<{ kolya: KolyaSkinId; sab: Sab
 export async function getOwnedAbilities(): Promise<OwnedAbilities> {
   const u = await fetchCurrentUser();
   return u?.abilities ?? { ...DEFAULT_ABILITIES };
+}
+
+/** Текст статуса друга для меню */
+export function formatFriendActivity(s: FriendPublicStatus): string {
+  if (s.isPlaying) return "В игре";
+  if (!s.lastSeenAt) return "Давно не заходил";
+  const ms = Date.now() - Date.parse(s.lastSeenAt);
+  if (Number.isNaN(ms) || ms < 0) return "Недавно";
+  const min = Math.floor(ms / 60_000);
+  if (min < 2) return "Был только что";
+  if (min < 60) return `Был ${min} мин назад`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `Был ${h} ч назад`;
+  const d = Math.floor(h / 24);
+  return `Был ${d} дн назад`;
 }

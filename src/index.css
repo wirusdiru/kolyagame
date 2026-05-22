@@ -96,23 +96,51 @@ body {
 .skin-actions { flex-shrink: 0; }
 
 .menu-friends .friend-add { display: flex; gap: 8px; margin-bottom: 10px; }
+.menu-friends .friend-add .auth-input { flex: 1; }
 
-.friend-list { list-style: none; margin: 12px 0; }
-.friend-list li {
+.friends-section-title {
+  color: #8af;
+  font-size: 12px;
+  margin: 14px 0 8px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.friend-list { list-style: none; margin: 8px 0; }
+.friend-row {
   display: flex;
-  justify-content: space-between;
-  padding: 8px 12px;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
   background: rgba(255, 255, 255, 0.05);
   border-radius: 8px;
   margin-bottom: 6px;
   color: #ccc;
 }
+.friend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #555;
+  flex-shrink: 0;
+}
+.friend-dot.online {
+  background: #4f8;
+  box-shadow: 0 0 8px rgba(80, 255, 120, 0.7);
+}
+.friend-info { flex: 1; min-width: 0; }
+.friend-name { display: block; font-weight: bold; color: #eee; }
+.friend-meta { display: block; font-size: 11px; color: #888; margin-top: 2px; }
+.friend-actions { display: flex; gap: 6px; align-items: center; }
+.friend-accept { padding: 4px 10px !important; font-size: 11px !important; }
+.friend-pending { font-size: 11px; color: #aa8; margin-right: auto; }
 .friend-remove {
   background: transparent;
   border: none;
   color: #f66;
   cursor: pointer;
   font-size: 18px;
+  flex-shrink: 0;
 }
 .friend-msg { color: #4f8; font-size: 12px; margin-bottom: 8px; }
 
@@ -155,7 +183,8 @@ body {
 
 .menu-tagline { color: #666; font-size: 12px; margin-top: 6px; }
 
-.menu-user {
+.menu-user,
+.menu-user-line {
   text-align: center;
   color: #aaa;
   font-size: 13px;
@@ -163,6 +192,40 @@ body {
   padding: 8px;
   background: rgba(255, 107, 53, 0.08);
   border-radius: 8px;
+}
+
+.menu-coins-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  background: linear-gradient(90deg, rgba(255, 215, 0, 0.12), rgba(255, 107, 53, 0.1));
+  border: 2px solid rgba(255, 215, 0, 0.35);
+  border-radius: 10px;
+}
+
+.menu-coins-label {
+  font-size: 11px;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.menu-coins-value {
+  font-size: 26px;
+  font-weight: 900;
+  color: #ffd700;
+  text-shadow: 0 0 12px rgba(255, 215, 0, 0.4);
+  min-width: 2ch;
+}
+
+.menu-coins-meta {
+  flex: 1;
+  text-align: right;
+  font-size: 12px;
+  color: #999;
 }
 
 .menu-tabs {

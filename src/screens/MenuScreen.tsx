@@ -1,5 +1,8 @@
-import { useState, useEffect } from "react";
-import type { AbilityId, KolyaSkinId, LeaderboardEntry, SabSkinId, ShopUpgradeId, UserProfile } from "../types";
+import { useState, useEffect, useCallback } from "react";
+import type {
+  AbilityId, FriendPublicStatus, KolyaSkinId, LeaderboardEntry,
+  SabSkinId, ShopUpgradeId, UserProfile,
+} from "../types";
 import {
   SHOP_ITEMS, ABILITY_SHOP, KOLYA_SKINS, SAB_SKINS, SHOP_LEVEL_STEP,
 } from "../constants";
@@ -26,12 +29,30 @@ export default function MenuScreen({ onStartSolo, user, serverOnline, onAuthChan
   const [shopSection, setShopSection] = useState<"upgrades" | "abilities">("upgrades");
   const [friendInput, setFriendInput] = useState("");
   const [friendMsg, setFriendMsg] = useState("");
+  const [friendStatuses, setFriendStatuses] = useState<FriendPublicStatus[]>([]);
 
   const loadLb = async () => {
     setLoading(true);
     setLeaderboard(await storage.getLeaderboard());
     setLoading(false);
   };
+
+  const refreshFriendsPanel = useCallback(async () => {
+    if (!user) return;
+    await storage.refreshFriendRequests();
+    onAuthChange();
+    setFriendStatuses(await storage.getFriendsStatus());
+  }, [user, onAuthChange]);
+
+  useEffect(() => {
+    if (tab !== "friends" || !user) return;
+    void refreshFriendsPanel();
+    const id = window.setInterval(() => { void refreshFriendsPanel(); }, 25_000);
+    return () => clearInterval(id);
+  }, [tab, user, refreshFriendsPanel]);
+
+  const statusFor = (name: string) =>
+    friendStatuses.find(s => s.username.toLowerCase() === name.toLowerCase());
 
   const handleAuth = async () => {
     setAuthError("");
@@ -81,13 +102,16 @@ export default function MenuScreen({ onStartSolo, user, serverOnline, onAuthChan
     if (ok) onAuthChange();
   };
 
-  const addFriend = async () => {
+  const sendFriendRequest = async () => {
     setFriendMsg("");
     setLoading(true);
-    const res = await storage.addFriend(friendInput);
+    const res = await storage.sendFriendRequest(friendInput);
     setLoading(false);
-    if (res.ok) { setFriendInput(""); onAuthChange(); setFriendMsg("Добавлен!"); }
-    else setFriendMsg(res.error ?? "Ошибка");
+    if (res.ok) {
+      setFriendInput("");
+      setFriendMsg("Заявка отправлена!");
+      await refreshFriendsPanel();
+    } else setFriendMsg(res.error ?? "Ошибка");
   };
 
   const tabStyle = (t: Tab) => ({
@@ -106,19 +130,28 @@ export default function MenuScreen({ onStartSolo, user, serverOnline, onAuthChan
     skins: "Скины", friends: "Друзья", auth: "Вход",
   };
 
+  const tagline = serverOnline && isCloudEnabled
+    ? "Соло · общий топ и друзья на сервере"
+    : "Соло · прогресс в этом браузере";
+
   return (
     <div className="menu-root">
       <div className="menu-panel menu-panel-wide">
         <div className="menu-title-block">
           <h1 className="menu-title">КОЛЯ</h1>
           <p className="menu-subtitle">И ГОВНО ИНТЕРНЕТ</p>
-          <p className="menu-tagline">
-            {serverOnline ? "Онлайн: топ, друзья, аккаунт" : "Офлайн: данные в браузере"}
-          </p>
-          {user && (
-            <p className="menu-user-line">
-              Игрок: <b>{user.username}</b> · Монеты: <b>{user.totalCoins}</b> · Рекорд: <b>{user.bestScore}</b>
-            </p>
+          <p className="menu-tagline">{tagline}</p>
+        </div>
+
+        <div className="menu-coins-bar">
+          <span className="menu-coins-label">Монеты</span>
+          <span className="menu-coins-value">{user ? user.totalCoins : "—"}</span>
+          {user ? (
+            <span className="menu-coins-meta">
+              {user.username} · рекорд {user.bestScore}
+            </span>
+          ) : (
+            <span className="menu-coins-meta">Войди в аккаунт — монеты копятся после забегов</span>
           )}
         </div>
 
@@ -135,7 +168,10 @@ export default function MenuScreen({ onStartSolo, user, serverOnline, onAuthChan
             <button type="button" className="menu-play-btn" onClick={onStartSolo} disabled={loading}>
               ИГРАТЬ ЗА КОЛЮ
             </button>
-            <p className="menu-hint">Бесконечный мир · биомы · вода (F при ≤2Л) · E гипноз · Q вонь</p>
+            <p className="menu-hint">Бесконечный мир · F вода (≤3.5Л) · E гипноз · Q вонь · лут сразу в руки</p>
+            {!user && (
+              <p className="menu-hint" style={{ color: "#c96" }}>Без входа монеты не сохраняются — вкладка «Вход»</p>
+            )}
           </div>
         )}
 
@@ -261,22 +297,90 @@ export default function MenuScreen({ onStartSolo, user, serverOnline, onAuthChan
         {tab === "skins" && !user && <p className="menu-empty">Войди в аккаунт</p>}
 
         {tab === "friends" && user && (
-          <div className="menu-shop">
-            <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-              <input className="auth-input" placeholder="Ник друга" value={friendInput} onChange={e => setFriendInput(e.target.value)} />
-              <button type="button" className="shop-buy-btn" onClick={addFriend} disabled={loading}>+</button>
+          <div className="menu-shop menu-friends">
+            <p className="menu-hint">Заявка в друзья — друг должен принять. Статус обновляется каждые ~25 сек.</p>
+            <div className="friend-add">
+              <input className="auth-input" placeholder="Ник игрока" value={friendInput} onChange={e => setFriendInput(e.target.value)} />
+              <button type="button" className="shop-buy-btn" onClick={() => void sendFriendRequest()} disabled={loading}>
+                Заявка
+              </button>
             </div>
-            {friendMsg && <p className="coop-msg">{friendMsg}</p>}
-            {user.friends.length === 0 ? <p className="menu-empty">Нет друзей</p> : (
-              <ul className="friends-list">
-                {user.friends.map(f => (
-                  <li key={f.username}>
-                    {f.username}
-                    <button type="button" className="auth-logout" onClick={async () => { await storage.removeFriend(f.username); onAuthChange(); }}>×</button>
-                  </li>
-                ))}
+            {friendMsg && <p className="friend-msg">{friendMsg}</p>}
+
+            {user.friendRequestsIn.length > 0 && (
+              <>
+                <h4 className="friends-section-title">Входящие заявки</h4>
+                <ul className="friend-list">
+                  {user.friendRequestsIn.map(r => (
+                    <li key={r.username} className="friend-row">
+                      <span className="friend-name">{r.username}</span>
+                      <span className="friend-actions">
+                        <button type="button" className="shop-buy-btn friend-accept" disabled={loading} onClick={async () => {
+                          setLoading(true);
+                          const res = await storage.acceptFriendRequest(r.username);
+                          setLoading(false);
+                          if (res.ok) { setFriendMsg(`${r.username} в друзьях!`); await refreshFriendsPanel(); }
+                          else setFriendMsg(res.error ?? "Ошибка");
+                        }}>Принять</button>
+                        <button type="button" className="auth-logout" disabled={loading} onClick={async () => {
+                          await storage.declineFriendRequest(r.username);
+                          await refreshFriendsPanel();
+                        }}>×</button>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+
+            {user.friendRequestsOut.length > 0 && (
+              <>
+                <h4 className="friends-section-title">Исходящие</h4>
+                <ul className="friend-list">
+                  {user.friendRequestsOut.map(r => (
+                    <li key={r.username} className="friend-row">
+                      <span className="friend-name">{r.username}</span>
+                      <span className="friend-pending">ожидает</span>
+                      <button type="button" className="auth-logout" disabled={loading} onClick={async () => {
+                        await storage.cancelFriendRequest(r.username);
+                        await refreshFriendsPanel();
+                      }}>Отмена</button>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+
+            <h4 className="friends-section-title">Друзья</h4>
+            {user.friends.length === 0 ? (
+              <p className="menu-empty">Пока никого</p>
+            ) : (
+              <ul className="friend-list">
+                {user.friends.map(f => {
+                  const st = statusFor(f.username);
+                  const playing = st?.isPlaying;
+                  return (
+                    <li key={f.username} className="friend-row">
+                      <span className={`friend-dot ${playing ? "online" : ""}`} title={st ? storage.formatFriendActivity(st) : ""} />
+                      <div className="friend-info">
+                        <span className="friend-name">{f.username}</span>
+                        <span className="friend-meta">
+                          {st ? storage.formatFriendActivity(st) : "—"}
+                          {st ? ` · рекорд ${st.bestScore}` : ""}
+                        </span>
+                      </div>
+                      <button type="button" className="auth-logout friend-remove" onClick={async () => {
+                        await storage.removeFriend(f.username);
+                        await refreshFriendsPanel();
+                      }}>×</button>
+                    </li>
+                  );
+                })}
               </ul>
             )}
+            <button type="button" className="auth-logout" style={{ marginTop: 10 }} onClick={() => void refreshFriendsPanel()} disabled={loading}>
+              Обновить статусы
+            </button>
           </div>
         )}
         {tab === "friends" && !user && <p className="menu-empty">Войди в аккаунт</p>}

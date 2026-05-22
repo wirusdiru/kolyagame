@@ -18,12 +18,12 @@ export const SHOP_LEVEL_STEP = 160;
 
 export const ABILITY_SHOP: { id: AbilityId; name: string; desc: string; cost: number }[] = [
   { id: "double_tap", name: "Двойной плевок", desc: "2 снаряда воды (не беск.)", cost: 1400 },
-  { id: "stink_mega", name: "Мега-вонь", desc: "+25% радиус Q", cost: 1100 },
+  { id: "stink_mega", name: "Мега-вонь", desc: "+12% радиус Q", cost: 1100 },
   { id: "water_splash", name: "Брызги 75Л", desc: "-1 расход воды за выстрел", cost: 950 },
   { id: "sab_fury", name: "Ярость Семечкина", desc: "Укус сильнее (+лимит)", cost: 1250 },
   { id: "pullup_heal", name: "Подтяг-Медик", desc: "+5 HP за подтяг", cost: 750 },
   { id: "rain_dance", name: "Танец дождя", desc: "+скорость под дождём", cost: 650 },
-  { id: "traffic_steal", name: "Кража трафика", desc: "E заряжается быстрее", cost: 1800 },
+  { id: "traffic_steal", name: "Кража трафика", desc: "E гипноз +1 сек", cost: 1800 },
   { id: "vyaly_bait", name: "Приманка Степа", desc: "Враги чаще на Степе", cost: 500 },
 ];
 
@@ -147,16 +147,19 @@ export function isBossWave(wave: number): boolean {
 }
 
 export const SHOP_ITEMS: ShopItem[] = [
-  { id: "maxHp", name: "Запахо-броня", desc: "+12 HP (макс 10)", baseCost: 280, maxLevel: 10, perLevel: 12 },
-  { id: "waterCap", name: "Бак 75Л+", desc: "+8Л макс (макс 6)", baseCost: 220, maxLevel: 6, perLevel: 8 },
-  { id: "speed", name: "Подтяг-скорость", desc: "+4% скорости (макс 8)", baseCost: 340, maxLevel: 8, perLevel: 0.04 },
-  { id: "stinkPower", name: "Усилитель вони", desc: "+2 урона Q (макс 8)", baseCost: 300, maxLevel: 8, perLevel: 2 },
-  { id: "alienCdReduce", name: "Чужой мозг", desc: "-8% кд E (макс 5)", baseCost: 420, maxLevel: 5, perLevel: 0.06 },
-  { id: "sabDmg", name: "Кость Семечкина", desc: "+3 урона псу (макс 8)", baseCost: 260, maxLevel: 8, perLevel: 3 },
-  { id: "waterEfficiency", name: "Экономия воды", desc: "-0.2Л за выстрел (макс 5)", baseCost: 290, maxLevel: 5, perLevel: 0.2 },
-  { id: "regenBoost", name: "Реген вони", desc: "+1 HP/сек Q (макс 4)", baseCost: 380, maxLevel: 4, perLevel: 1 },
-  { id: "alienDuration", name: "Заряд E+", desc: "+10% скорости заряда E (макс 4)", baseCost: 480, maxLevel: 4, perLevel: 0.05 },
+  { id: "maxHp", name: "Запахо-броня", desc: "+7 HP (макс 10)", baseCost: 280, maxLevel: 10, perLevel: 7 },
+  { id: "waterCap", name: "Бак 75Л+", desc: "+5Л макс (макс 6)", baseCost: 220, maxLevel: 6, perLevel: 5 },
+  { id: "speed", name: "Подтяг-скорость", desc: "+2.5% скорости (макс 8)", baseCost: 340, maxLevel: 8, perLevel: 0.025 },
+  { id: "stinkPower", name: "Усилитель вони", desc: "+1 урона Q (макс 8)", baseCost: 300, maxLevel: 8, perLevel: 1 },
+  { id: "alienCdReduce", name: "Чужой мозг", desc: "-5% кд E (макс 5)", baseCost: 420, maxLevel: 5, perLevel: 0.05 },
+  { id: "sabDmg", name: "Кость Семечкина", desc: "+2 урона псу (макс 8)", baseCost: 260, maxLevel: 8, perLevel: 2 },
+  { id: "waterEfficiency", name: "Экономия воды", desc: "-0.15Л за выстрел (макс 5)", baseCost: 290, maxLevel: 5, perLevel: 0.15 },
+  { id: "regenBoost", name: "Реген вони", desc: "+0.5 HP/тик Q (макс 4)", baseCost: 380, maxLevel: 4, perLevel: 0.5 },
+  { id: "alienDuration", name: "Длина гипноза E", desc: "3 сек → до 9 сек (макс 4 ур.)", baseCost: 480, maxLevel: 4, perLevel: 1.5 },
 ];
+
+/** Порог воды (л): ниже — можно держать F для зарядки */
+export const WATER_REFILL_BELOW = 3.5;
 
 export const WAVE_MODIFIERS = [
   "", "УСКОРЕНИЕ", "ДВОЙНОЙ СПАВН", "ТУМАН ВОНИ", "ШТОРМ ЛАГОВ", "КРОВАВЫЙ ДОЖДЬ",

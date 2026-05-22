@@ -19,7 +19,6 @@ export default function GameOverScreen({ stats, onRestart, onMenu }: GameOverScr
             ["Убито врагов", stats.enemiesKilled],
             ["Боссов", stats.bossesKilled],
             ["Подтягиваний", stats.totalPullUps],
-            ["Детей закручено", stats.childrenSpun],
             ["Инопланетянин", stats.alienAbductions + " раз"],
             ["Монет заработано", stats.coinsEarned],
           ].map(([label, val], i) => (

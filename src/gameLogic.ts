@@ -15,10 +15,9 @@ const ALL_ENEMY_TYPES: Enemy["type"][] = [
 ];
 
 function getAvailableEnemies(wave: number): Enemy["type"][] {
-  if (wave < 2) return ALL_ENEMY_TYPES.slice(0, 2);
-  if (wave < 4) return ALL_ENEMY_TYPES.slice(0, 4);
-  if (wave < 7) return ALL_ENEMY_TYPES.slice(0, 7);
-  if (wave < 12) return ALL_ENEMY_TYPES.slice(0, 9);
+  if (wave < 2) return ALL_ENEMY_TYPES.slice(0, 5);
+  if (wave < 4) return ALL_ENEMY_TYPES.slice(0, 7);
+  if (wave < 6) return ALL_ENEMY_TYPES.slice(0, 9);
   return ALL_ENEMY_TYPES;
 }
 
@@ -27,23 +26,23 @@ export function spawnEnemy(
 ): Enemy {
   const partyMult = 1 + (partySize - 1) * 0.55;
   const available = getAvailableEnemies(wave);
-  const type = available[Math.floor(Math.random() * available.length)];
+  const type = available[Math.floor(Math.random() * available.length)] ?? "vyaly_step";
   const pos = findLandPosition(world, playerX, playerY, 320, 520);
   const x = pos.x;
   const y = pos.y;
 
   const hpMap: Record<Enemy["type"], number> = {
-    vyaly_step: 18 + wave * 4,
-    router: 14 + wave * 3,
-    lag_ball: 10 + wave * 2,
-    tree_ghost: 20 + wave * 4,
-    wifi_drone: 12 + wave * 3,
-    cable_snake: 16 + wave * 3,
-    lag_ghost: 18 + wave * 4,
-    provider_golem: 28 + wave * 5,
-    child_swarm: 10 + wave * 2,
-    rain_drop: 11 + wave * 2,
-    kalyan_spirit: 22 + wave * 4,
+    vyaly_step: 15 + wave * 3,
+    router: 12 + wave * 2,
+    lag_ball: 9 + wave * 2,
+    tree_ghost: 17 + wave * 3,
+    wifi_drone: 11 + wave * 2,
+    cable_snake: 14 + wave * 3,
+    lag_ghost: 15 + wave * 3,
+    provider_golem: 24 + wave * 4,
+    child_swarm: 9 + wave * 2,
+    rain_drop: 10 + wave * 2,
+    kalyan_spirit: 19 + wave * 3,
   };
   const speedMap: Record<Enemy["type"], number> = {
     vyaly_step: 1.25 + wave * 0.07,
@@ -89,23 +88,37 @@ export function spawnBoss(wave: number, playerX: number, playerY: number): Boss 
   };
 }
 
-export function spawnItem(x: number, y: number, forceType?: ItemType): Item {
-  const types: ItemType[] = [
-    "water_can", "pizza", "antenna", "coin", "bone_bag",
-    "kalyan_boost", "alien_cell", "stink_bomb", "shield",
-  ];
-  return {
-    id: nextId(),
-    x, y,
-    type: forceType ?? types[Math.floor(Math.random() * types.length)],
-  };
+const LOOT_WEIGHTS: { type: ItemType; w: number }[] = [
+  { type: "pizza", w: 22 }, { type: "shield", w: 18 }, { type: "water_can", w: 20 },
+  { type: "coin", w: 16 }, { type: "bone_bag", w: 14 }, { type: "antenna", w: 8 },
+  { type: "kalyan_boost", w: 5 }, { type: "alien_cell", w: 4 }, { type: "stink_bomb", w: 3 },
+];
+
+function rollLootType(): ItemType {
+  const sum = LOOT_WEIGHTS.reduce((s, x) => s + x.w, 0);
+  let r = Math.random() * sum;
+  for (const e of LOOT_WEIGHTS) {
+    r -= e.w;
+    if (r <= 0) return e.type;
+  }
+  return "coin";
 }
+
+export function spawnItem(x: number, y: number, forceType?: ItemType): Item {
+  return { id: nextId(), x, y, type: forceType ?? rollLootType() };
+}
+
+export const ITEM_PICKUP_LABELS: Record<ItemType, string> = {
+  water_can: "+30Л воды", pizza: "+30 HP", antenna: "+50 очков", coin: "+25 очков",
+  bone_bag: "+15 HP", kalyan_boost: "+80 очков", alien_cell: "+40 очков",
+  stink_bomb: "+30 очков", shield: "ЩИТ!",
+};
 
 export { isBossWave };
 
 export function getWaveTarget(wave: number, partySize = 1): number {
-  const base = 32 + wave * 12 + Math.floor(wave / 3) * 14;
-  return Math.floor(base * (1 + (partySize - 1) * 0.4));
+  const base = 14 + wave * 6 + Math.floor(wave / 4) * 6;
+  return Math.floor(base * (1 + (partySize - 1) * 0.35));
 }
 
 export function getEnemyPoints(type: Enemy["type"]): number {
@@ -135,18 +148,17 @@ export function applyUpgrades(
   up: PlayerUpgrades,
   abilities?: OwnedAbilities,
 ) {
-  const alienChargeBonus = Math.min(0.45, up.alienDuration * 0.1 + (abilities?.traffic_steal ? 0.15 : 0));
+  const alienFreezeSec = 3 + up.alienDuration * 1.75 + (abilities?.traffic_steal ? 1 : 0);
   return {
-    maxHp: base.maxHp + up.maxHp * 10,
-    waterCap: base.waterCap + up.waterCap * 12,
-    speed: base.speed * (1 + up.speed * 0.04),
-    stinkDmg: 5 + up.stinkPower * 2,
-    alienCd: Math.max(3000, Math.floor(3600 * (1 - up.alienCdReduce * 0.08))),
-    alienChargeRate: 1 + alienChargeBonus,
-    alienFreezeMax: Math.min(600, Math.floor(600 * (1 + alienChargeBonus * 0.5))),
-    sabDmg: 12 + up.sabDmg * 2,
-    waterPerShot: Math.max(1.5, 3 - up.waterEfficiency * 0.2 - (abilities?.water_splash ? 1 : 0)),
-    stinkRadiusMult: 1 + (abilities?.stink_mega ? 0.25 : 0),
+    maxHp: base.maxHp + up.maxHp * 7,
+    waterCap: base.waterCap + up.waterCap * 5,
+    speed: base.speed * (1 + up.speed * 0.025),
+    stinkDmg: 4 + up.stinkPower,
+    alienCd: Math.max(3200, Math.floor(3600 * (1 - up.alienCdReduce * 0.05))),
+    alienFreezeMax: Math.min(540, Math.round(alienFreezeSec * 60)),
+    sabDmg: 10 + up.sabDmg * 2,
+    waterPerShot: Math.max(1.5, 3 - up.waterEfficiency * 0.15 - (abilities?.water_splash ? 0.75 : 0)),
+    stinkRadiusMult: 1 + (abilities?.stink_mega ? 0.12 : 0),
     regenOnStink: up.regenBoost,
     doubleShot: abilities?.double_tap ?? false,
     sabFury: abilities?.sab_fury ?? false,
@@ -176,11 +188,11 @@ export function emptyStats(): GameStats {
   };
 }
 
-/** Монеты за забег — урезано, чтобы не откупать магазин за 1–2 игры */
+/** Монеты за забег */
 export function coinsForRun(score: number, wave: number): number {
-  const fromScore = Math.floor(score / 16);
-  const fromWave = Math.min(35, Math.floor(wave * 2));
-  return Math.max(10, Math.min(160, fromScore + fromWave));
+  const fromScore = Math.floor(score / 12);
+  const fromWave = Math.min(48, Math.floor(wave * 2.5));
+  return Math.max(14, Math.min(220, fromScore + fromWave));
 }
 
 export function getWaveModifier(wave: number): string {

@@ -1,17 +1,18 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import type {
   GameState, Enemy, Boss, Projectile, Item, FloatingText,
-  GameStats, InventorySlot, ItemType, UserProfile,
+  GameStats, UserProfile,
 } from "./types";
 import {
   KOLAY_NICKNAMES, STINK_MESSAGES, INTERNET_MESSAGES,
   SABCHAK_PHRASES, POCKET_STUFF, BOSS_NAMES, BIOME_NAMES, WORLD_EVENTS,
+  WATER_REFILL_BELOW,
 } from "./constants";
 import { playSfx } from "./audio";
 import {
   nextId, resetIds, spawnEnemy, spawnBoss, spawnItem, isBossWave,
   applyItemEffect, createFloatingText, emptyStats, getWaveTarget,
-  getEnemyPoints, applyUpgrades, getWaveModifier, coinsForRun,
+  getEnemyPoints, applyUpgrades, getWaveModifier, coinsForRun, ITEM_PICKUP_LABELS,
 } from "./gameLogic";
 import {
   InfiniteWorld, getTileSpeed, isWalkableWorld, findLandPosition, TILE_SIZE,
@@ -31,11 +32,6 @@ const dist = (ax: number, ay: number, bx: number, by: number) =>
 const rand = (a: number, b: number) => a + Math.random() * (b - a);
 const randOf = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
 
-const EMPTY_INV: InventorySlot[] = [
-  { type: "water_can", count: 0 }, { type: "pizza", count: 0 },
-  { type: "shield", count: 0 }, { type: "coin", count: 0 },
-];
-
 export default function App() {
   const [gameState, setGameState] = useState<GameState>("menu");
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -45,6 +41,10 @@ export default function App() {
   }, []);
 
   useEffect(() => { refreshUser(); }, [refreshUser]);
+
+  useEffect(() => {
+    if (gameState === "menu") void storage.setPresence(false);
+  }, [gameState]);
   const [screenW, setScreenW] = useState(window.innerWidth);
   const [screenH, setScreenH] = useState(window.innerHeight);
   const infiniteWorldRef = useRef(new InfiniteWorld(Date.now()));
@@ -60,7 +60,6 @@ export default function App() {
   const alienFreezeTimerRef = useRef(0);
   const alienMaxFreezeRef = useRef(600);
   const alienTriggerRef = useRef(false);
-  const waterRefillOkRef = useRef(true);
   const doubleShotRef = useRef(false);
   const sabFuryRef = useRef(false);
   const pullupHealBonusRef = useRef(0);
@@ -81,7 +80,7 @@ export default function App() {
   const [isAlien, setIsAlien] = useState(false);
   const [alienCooldown, setAlienCooldown] = useState(0);
   const [alienMaxCd, setAlienMaxCd] = useState(3600);
-  const [alienMaxFreezeDisp, setAlienMaxFreezeDisp] = useState(10);
+  const [alienMaxFreezeDisp, setAlienMaxFreezeDisp] = useState(3);
   const [alienFreezeLeft, setAlienFreezeLeft] = useState(0);
   const [pullUps, setPullUps] = useState(0);
   const [pullupAnim, setPullupAnim] = useState(false);
@@ -108,7 +107,6 @@ export default function App() {
   const bannerBusyUntilRef = useRef(0);
   const worldRef = useRef<WorldSnapshot>(emptyWorld());
   const [stats, setStats] = useState<GameStats>(emptyStats());
-  const [inventory, setInventory] = useState<InventorySlot[]>(EMPTY_INV.map(s => ({ ...s })));
 
   const [nickname, setNickname] = useState(KOLAY_NICKNAMES[0]);
   const [internetMsg, setInternetMsg] = useState("");
@@ -154,7 +152,6 @@ export default function App() {
   const playerSpeedRef = useRef(3.8);
   const sabDmgRef = useRef(12);
   const stinkActiveRef = useRef(false);
-  const inventoryRef = useRef<InventorySlot[]>(EMPTY_INV.map(s => ({ ...s })));
   const syncWorld = () => {
     const iw = infiniteWorldRef.current;
     iw.ensureNear(kxRef.current, kyRef.current);
@@ -168,7 +165,7 @@ export default function App() {
       isAlien: isAlienRef.current,
       pullupAnim: pullupAnimRef.current,
       stinkActive: stinkActiveRef.current,
-      stinkRadius: (130 + statsRef.current.wave * 5) * stinkRadiusMultRef.current,
+      stinkRadius: (82 + statsRef.current.wave * 2) * stinkRadiusMultRef.current,
       enemies: enemiesRef.current,
       boss: bossRef.current,
       projectiles: projRef.current,
@@ -210,38 +207,6 @@ export default function App() {
     ];
   }, []);
 
-  const addToInventory = (type: ItemType) => {
-    const inv = [...inventoryRef.current];
-    const slot = inv.find(s => s.type === type && s.count < 5)
-      ?? inv.find(s => s.count === 0);
-    if (slot) {
-      if (slot.count === 0) slot.type = type;
-      slot.count = Math.min(5, slot.count + 1);
-    }
-    inventoryRef.current = inv;
-    setInventory([...inv]);
-  };
-
-  const useInventorySlot = (idx: number) => {
-    const slot = inventoryRef.current[idx];
-    if (!slot || slot.count <= 0) return;
-    const result = applyItemEffect(slot.type, {
-      hp: kolyaHpRef.current, maxHp: kolyaMaxHpRef.current,
-      water: waterRef.current, waterCap: waterCapRef.current,
-      score: statsRef.current.score, invincible: invincibleRef.current,
-    });
-    kolyaHpRef.current = result.hp;
-    waterRef.current = result.water;
-    invincibleRef.current = result.invincible;
-    statsRef.current = { ...statsRef.current, score: result.score };
-    slot.count -= 1;
-    setKolyaHp(result.hp);
-    setWater(result.water);
-    setInvincible(result.invincible);
-    setInventory([...inventoryRef.current]);
-    addFloat(kxRef.current, kyRef.current - 30, "ИСПОЛЬЗОВАНО!", "#aaffaa");
-  };
-
   useEffect(() => {
     const dn = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
@@ -254,11 +219,7 @@ export default function App() {
         if (gameState === "playing") setGameState("paused");
         else if (gameState === "paused") setGameState("playing");
       }
-      if (gameState === "playing" && e.code.startsWith("Digit")) {
-        const idx = parseInt(e.code.replace("Digit", "")) - 1;
-        if (idx >= 0 && idx < 4) useInventorySlot(idx);
-      }
-      if (e.code === "KeyE" && gameState === "playing") {
+      if (e.code === "KeyE" && gameState === "playing" && !e.repeat) {
         alienTriggerRef.current = true;
       }
       if (["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space", "KeyE", "KeyF", "KeyQ"].includes(e.code)) {
@@ -277,11 +238,13 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameState]);
 
+  const canRefillWater = () => waterRef.current <= WATER_REFILL_BELOW + 0.01;
+
   const fireWaterShot = (tx: number, ty: number) => {
-    if (keysRef.current.has("KeyF")) return;
     const cost = waterPerShotRef.current;
-    if (waterRef.current < cost) {
-      addFloat(kxRef.current, kyRef.current - 40, "Мало воды! F при ≤2Л", "#f88");
+    if (keysRef.current.has("KeyF") && canRefillWater()) return;
+    if (waterRef.current + 0.02 < cost) {
+      addFloat(kxRef.current, kyRef.current - 40, `Мало воды! F при ≤${WATER_REFILL_BELOW}Л`, "#f88");
       return;
     }
     const dx = tx - kxRef.current, dy = ty - kyRef.current;
@@ -307,8 +270,8 @@ export default function App() {
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     if (gameState !== "playing" || isDeadRef.current) return;
-    if (keysRef.current.has("KeyF")) return;
-    if (waterRef.current < waterPerShotRef.current) return;
+    if (keysRef.current.has("KeyF") && waterRef.current <= WATER_REFILL_BELOW + 0.01) return;
+    if (waterRef.current + 0.02 < waterPerShotRef.current) return;
     const world = screenToWorld(e.clientX, e.clientY);
     fireWaterShot(world.x, world.y);
   }, [gameState, screenW, addFloat]);
@@ -319,7 +282,6 @@ export default function App() {
     const o: StartOpts = typeof opts === "number" ? { seed: opts } : (opts ?? {});
     isDeadRef.current = false;
     pullupCdRef.current = 0;
-    waterRefillOkRef.current = true;
     resetIds();
     const newSeed = o.seed ?? Date.now() + Math.floor(Math.random() * 1_000_000);
     infiniteWorldRef.current = new InfiniteWorld(newSeed);
@@ -376,23 +338,22 @@ export default function App() {
     rainTimerRef.current = 0;
     tickRef.current = 0;
     statsRef.current = emptyStats();
-    inventoryRef.current = EMPTY_INV.map(s => ({ ...s }));
-
     setKx(cx); setKy(cy);
     setSabX(cx + 60); setSabY(cy + 40);
     setKolyaHp(applied.maxHp); setKolyaMaxHp(applied.maxHp);
     setWater(applied.waterCap); setWaterCap(applied.waterCap);
     setIsAlien(false); setAlienCooldown(0); setAlienMaxCd(applied.alienCd);
-    setAlienMaxFreezeDisp(Math.round(applied.alienFreezeMax / 60));
+    setAlienMaxFreezeDisp(Math.round(applied.alienFreezeMax / 6) / 10);
     setStinkPower(applied.stinkDmg); setPlayerSpeed(applied.speed); setSabDmg(applied.sabDmg);
     setSabHp(80); setInvincible(0);
     setEnemies([]); setBoss(null);
     setProjectiles([]);
     setItems([]);
-    setStats(emptyStats()); setInventory(EMPTY_INV.map(s => ({ ...s })));
+    setStats(emptyStats());
     setIsRaining(false); setStinkMsg(""); setPocketMsg(""); setInternetDown(false);
     setBossWarning(false); setWaveAnnounce(""); setXpBar(0); setPullUps(0);
     setWaveModifier(getWaveModifier(1));
+    void storage.setPresence(true);
     setGameState("playing");
   };
 
@@ -439,18 +400,15 @@ export default function App() {
         kxRef.current = nx; kyRef.current = ny;
       }
 
-      if (waterRef.current <= 2) waterRefillOkRef.current = true;
-
-      if (keys.has("KeyF") && !isDeadRef.current && waterRefillOkRef.current) {
+      if (keys.has("KeyF") && !isDeadRef.current && waterRef.current <= WATER_REFILL_BELOW) {
         if (waterRef.current < waterCapRef.current - 0.01) {
           const prev = waterRef.current;
           waterRef.current = Math.min(waterCapRef.current, waterRef.current + 0.45);
-          if (prev <= 2 && waterRef.current > 2 && tk % 15 === 0) playSfx("refill");
+          if (prev <= WATER_REFILL_BELOW && waterRef.current > WATER_REFILL_BELOW && tk % 15 === 0) {
+            playSfx("refill");
+          }
           if (tk % 4 === 0) setWater(waterRef.current);
         }
-      }
-      if (!keys.has("KeyF") && waterRef.current > 2.5) {
-        waterRefillOkRef.current = false;
       }
 
       if (pullupCdRef.current > 0) pullupCdRef.current -= 1;
@@ -490,7 +448,7 @@ export default function App() {
 
       stinkActiveRef.current = keys.has("KeyQ");
       if (stinkActiveRef.current && tk % 10 === 0) {
-        const sr = (110 + st.wave * 4) * stinkRadiusMultRef.current;
+        const sr = (82 + st.wave * 2) * stinkRadiusMultRef.current;
         if (regenStinkRef.current > 0 && tk % 24 === 0) {
           kolyaHpRef.current = Math.min(kolyaMaxHpRef.current, kolyaHpRef.current + regenStinkRef.current);
         }
@@ -521,7 +479,7 @@ export default function App() {
           addFloat(kxRef.current, kyRef.current - 45, `ВОНЬ ×${stinkKills}`, "#aaff44");
         }
         if (bossRef.current && dist(bossRef.current.x, bossRef.current.y, kxRef.current, kyRef.current) < sr + 50) {
-          bossRef.current = { ...bossRef.current, hp: bossRef.current.hp - Math.floor(stinkPowerRef.current * 0.7) };
+          bossRef.current = { ...bossRef.current, hp: bossRef.current.hp - Math.floor(stinkPowerRef.current * 0.45) };
         }
       }
 
@@ -585,14 +543,14 @@ export default function App() {
       if (sabAttackTimerRef.current > 0) sabAttackTimerRef.current -= 1;
 
       // Враги далеко — подтягиваем к Коле (каждый отдельно, не ждём пока все убегут)
-      const CATCHUP_DIST = 480;
-      if (!bossActiveRef.current && tk % 20 === 0) {
+      const CATCHUP_DIST = 740;
+      if (!bossActiveRef.current && tk % 55 === 0) {
         let caughtUp = 0;
         enemiesRef.current = enemiesRef.current.map((en, i) => {
           if (en.hp <= 0) return en;
           if (dist(en.x, en.y, kxRef.current, kyRef.current) <= CATCHUP_DIST) return en;
           const pos = findLandPosition(
-            infiniteWorldRef.current, kxRef.current, kyRef.current, 200, 360,
+            infiniteWorldRef.current, kxRef.current, kyRef.current, 280, 460,
           );
           caughtUp += 1;
           const ring = caughtUp;
@@ -637,8 +595,8 @@ export default function App() {
       const doubleSpawn = st.wave % 3 === 0;
       if (!bossActiveRef.current) {
         spawnTimerRef.current += 1;
-        const spawnInterval = Math.max(18, 95 - st.wave * 4);
-        const spawnCount = doubleSpawn ? 5 : st.wave > 2 ? 4 : 3;
+        const spawnInterval = Math.max(28, 108 - st.wave * 3);
+        const spawnCount = doubleSpawn ? 2 : st.wave > 4 ? 2 : 1;
         if (spawnTimerRef.current >= spawnInterval && enemiesPerWaveRef.current < waveTargetRef.current) {
           spawnTimerRef.current = 0;
           for (let i = 0; i < spawnCount; i++) {
@@ -750,7 +708,7 @@ export default function App() {
 
       // Босс слишком далеко — тоже подтягиваем
       if (bossRef.current && bossActiveRef.current && !alienFreeze && tk % 45 === 0) {
-        if (dist(bossRef.current.x, bossRef.current.y, kxRef.current, kyRef.current) > 620) {
+        if (dist(bossRef.current.x, bossRef.current.y, kxRef.current, kyRef.current) > 780) {
           const pos = findLandPosition(infiniteWorldRef.current, kxRef.current, kyRef.current, 220, 320);
           bossRef.current = {
             ...bossRef.current,
@@ -891,13 +849,12 @@ export default function App() {
             water: waterRef.current, waterCap: waterCapRef.current,
             score: statsRef.current.score, invincible: invincibleRef.current,
           });
-          kolyaHpRef.current = r.hp; waterRef.current = r.water; invincibleRef.current = r.invincible;
-          statsRef.current = { ...statsRef.current, score: r.score };
           kolyaHpRef.current = r.hp;
           waterRef.current = r.water;
           invincibleRef.current = r.invincible;
-          addToInventory(item.type);
-          addFloat(item.x, item.y - 20, "+", "#afa");
+          statsRef.current = { ...statsRef.current, score: r.score };
+          addFloat(item.x, item.y - 24, ITEM_PICKUP_LABELS[item.type] ?? "+", "#afa");
+          playSfx("coin");
           return false;
         }
         return true;
@@ -1050,7 +1007,7 @@ export default function App() {
             {alienFreezeLeft > 0
               ? `Гипноз ${(alienFreezeLeft / 60).toFixed(1)}с`
               : alienReady
-                ? `E — гипноз ${alienMaxFreezeDisp}с`
+                ? `E — гипноз ${alienMaxFreezeDisp} сек`
                 : `КД ${Math.ceil(alienCooldown / 60)}с`}
           </div>
         </div>
@@ -1078,23 +1035,8 @@ export default function App() {
           </div>
         )}
 
-        {/* Inventory HUD */}
-        <div className="hud-panel" style={{ bottom: 24, left: 12, display: "flex", gap: 6 }}>
-          {inventory.map((slot, i) => (
-            <div key={i} style={{
-              width: 52, height: 52, background: slot.count > 0 ? "rgba(255,107,53,0.2)" : "rgba(0,0,0,0.4)",
-              border: `2px solid ${slot.count > 0 ? "#ff6b35" : "#333"}`,
-              borderRadius: 8, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-              fontSize: 9, color: slot.count > 0 ? "#ddd" : "#555",
-            }}>
-              <span style={{ color: "#ff6b35", fontWeight: "bold" }}>{i + 1}</span>
-              {slot.count > 0 ? <span>×{slot.count}</span> : <span>—</span>}
-            </div>
-          ))}
-        </div>
-
         <div className="hud-panel hud-controls">
-          WASD · ЛКМ вода · Q вонь · F заряд (≤2Л) · Space подтяг · E гипноз · 1-4
+          WASD · ЛКМ вода · Q вонь · F заряд (≤{WATER_REFILL_BELOW}Л) · Space подтяг · E гипноз · лут сразу
         </div>
 
         <Minimap worldRef={worldRef} infiniteWorldRef={infiniteWorldRef} />
@@ -1124,7 +1066,6 @@ export default function App() {
       {gameState === "paused" && (
         <PauseOverlay
           stats={stats}
-          inventory={inventory}
           onResume={() => setGameState("playing")}
           onQuit={() => setGameState("menu")}
         />

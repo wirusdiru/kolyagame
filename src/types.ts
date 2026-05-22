@@ -150,6 +150,18 @@ export interface FriendEntry {
   addedAt: string;
 }
 
+export interface FriendRequestEntry {
+  username: string;
+  at: string;
+}
+
+export interface FriendPublicStatus {
+  username: string;
+  bestScore: number;
+  lastSeenAt: string | null;
+  isPlaying: boolean;
+}
+
 export interface ShopItem {
   id: ShopUpgradeId;
   name: string;
@@ -175,6 +187,10 @@ export interface UserProfile {
   equippedKolyaSkin: KolyaSkinId;
   equippedSabSkin: SabSkinId;
   friends: FriendEntry[];
+  friendRequestsIn: FriendRequestEntry[];
+  friendRequestsOut: FriendRequestEntry[];
+  lastSeenAt: string;
+  isPlaying: boolean;
   gamesPlayed: number;
   bestScore: number;
 }
