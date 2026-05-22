@@ -175,6 +175,13 @@ export function emptyStats(): GameStats {
   };
 }
 
+/** Монеты за забег — урезано, чтобы не откупать магазин за 1–2 игры */
+export function coinsForRun(score: number, wave: number): number {
+  const fromScore = Math.floor(score / 28);
+  const fromWave = Math.min(18, Math.floor(wave * 1.1));
+  return Math.max(4, Math.min(85, fromScore + fromWave));
+}
+
 export function getWaveModifier(wave: number): string {
   const mods = ["", "УСКОРЕНИЕ", "ДВОЙНОЙ СПАВН", "ТУМАН ВОНИ", "ШТОРМ ЛАГОВ", "КРОВАВЫЙ ДОЖДЬ"];
   return mods[wave % mods.length] ?? "";

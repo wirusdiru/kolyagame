@@ -11,7 +11,7 @@ import { playSfx } from "./audio";
 import {
   nextId, resetIds, spawnEnemy, spawnBoss, spawnItem, isBossWave,
   applyItemEffect, createFloatingText, emptyStats, getWaveTarget,
-  getEnemyPoints, applyUpgrades, getWaveModifier,
+  getEnemyPoints, applyUpgrades, getWaveModifier, coinsForRun,
 } from "./gameLogic";
 import {
   InfiniteWorld, getTileSpeed, isWalkableWorld, findLandPosition, TILE_SIZE,
@@ -434,7 +434,7 @@ export default function App() {
   };
 
   const endGame = async () => {
-    const coins = Math.floor(statsRef.current.score / 10);
+    const coins = coinsForRun(statsRef.current.score, statsRef.current.wave);
     statsRef.current = { ...statsRef.current, coinsEarned: coins };
     await storage.recordGameEnd(statsRef.current.score, statsRef.current.wave, coins);
     const u = await storage.fetchCurrentUser();
@@ -687,7 +687,7 @@ export default function App() {
       if (tk % 720 === 0) {
         const ev = randOf(WORLD_EVENTS);
         addFloat(kxRef.current, kyRef.current - 70, ev, "#fd6");
-        statsRef.current = { ...statsRef.current, score: statsRef.current.score + 35 };
+        statsRef.current = { ...statsRef.current, score: statsRef.current.score + 18 };
         if (ev.includes("лут") || ev.includes("куст")) {
           itemsRef.current = [...itemsRef.current, spawnItem(kxRef.current + rand(-80, 80), kyRef.current + rand(-80, 80))];
         }
