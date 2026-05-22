@@ -315,7 +315,63 @@ body {
 }
 .shop-buy-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-.menu-auth { display: flex; flex-direction: column; gap: 10px; }
+.menu-auth { display: flex; flex-direction: column; gap: 12px; }
+
+.auth-heading {
+  text-align: center;
+  color: #ffd700;
+  font-size: 18px;
+  margin: 0 0 4px;
+}
+
+.auth-tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.auth-tabs button {
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 2px solid #555;
+  background: rgba(20, 20, 30, 0.9);
+  color: #ccc;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 13px;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.auth-tabs button:hover {
+  border-color: #888;
+  color: #eee;
+}
+
+.auth-tabs button.active {
+  border-color: #ff6b35;
+  color: #ff6b35;
+  background: rgba(255, 107, 53, 0.2);
+  box-shadow: 0 0 12px rgba(255, 107, 53, 0.25);
+}
+
+.auth-switch {
+  width: 100%;
+  padding: 10px;
+  background: transparent;
+  border: 1px dashed #446;
+  border-radius: 8px;
+  color: #7eb8ff;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.auth-switch:hover {
+  color: #adf;
+  border-color: #6af;
+  background: rgba(80, 140, 255, 0.08);
+}
+
 .auth-toggle { display: flex; gap: 8px; justify-content: center; }
 .auth-input {
   padding: 10px 14px;

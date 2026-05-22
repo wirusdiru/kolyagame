@@ -387,15 +387,29 @@ export default function MenuScreen({ onStartSolo, user, serverOnline, onAuthChan
 
         {tab === "auth" && (
           <div className="menu-auth">
+            <h3 className="auth-heading">{authMode === "login" ? "Вход в аккаунт" : "Регистрация"}</h3>
             <div className="auth-tabs">
-              <button type="button" className={authMode === "login" ? "active" : ""} onClick={() => setAuthMode("login")}>Вход</button>
-              <button type="button" className={authMode === "register" ? "active" : ""} onClick={() => setAuthMode("register")}>Регистрация</button>
+              <button type="button" className={authMode === "login" ? "active" : ""} onClick={() => { setAuthMode("login"); setAuthError(""); }}>
+                Вход
+              </button>
+              <button type="button" className={authMode === "register" ? "active" : ""} onClick={() => { setAuthMode("register"); setAuthError(""); }}>
+                Регистрация
+              </button>
             </div>
             <input className="auth-input" placeholder="Имя игрока" value={username} onChange={e => setUsername(e.target.value)} autoComplete="username" />
             <input className="auth-input" type="password" placeholder="Пароль" value={password} onChange={e => setPassword(e.target.value)} autoComplete={authMode === "register" ? "new-password" : "current-password"} />
             {authError && <p className="auth-error">{authError}</p>}
             <button type="button" className="menu-play-btn" onClick={handleAuth} disabled={loading}>
               {authMode === "login" ? "ВОЙТИ" : "СОЗДАТЬ АККАУНТ"}
+            </button>
+            <button
+              type="button"
+              className="auth-switch"
+              onClick={() => { setAuthMode(authMode === "login" ? "register" : "login"); setAuthError(""); }}
+            >
+              {authMode === "login"
+                ? "Нет аккаунта? Нажми — регистрация"
+                : "Уже есть аккаунт? Нажми — вход"}
             </button>
             {user && (
               <button type="button" className="auth-logout" onClick={async () => { await storage.logout(); onAuthChange(); }}>Выйти ({user.username})</button>
