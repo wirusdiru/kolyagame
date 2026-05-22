@@ -1,4 +1,44 @@
-import type { BossType, EnemyType, ShopItem } from "./types";
+import type {
+  AbilityId, BossType, EnemyType, KolyaSkinId, OwnedAbilities,
+  SabSkinId, ShopItem,
+} from "./types";
+
+export const BIOME_NAMES: Record<string, string> = {
+  plains: "Луга", forest: "Лес", desert: "Пустыня",
+  snow: "Зима", swamp: "Болото", mountain: "Горы",
+};
+
+export const DEFAULT_ABILITIES: OwnedAbilities = {
+  double_tap: false, stink_mega: false, water_splash: false, sab_fury: false,
+  pullup_heal: false, rain_dance: false, traffic_steal: false, vyaly_bait: false,
+};
+
+export const ABILITY_SHOP: { id: AbilityId; name: string; desc: string; cost: number }[] = [
+  { id: "double_tap", name: "Двойной плевок", desc: "2 снаряда воды (не беск.)", cost: 350 },
+  { id: "stink_mega", name: "Мега-вонь", desc: "+25% радиус Q", cost: 280 },
+  { id: "water_splash", name: "Брызги 75Л", desc: "-1 расход воды за выстрел", cost: 220 },
+  { id: "sab_fury", name: "Ярость Семечкина", desc: "Укус сильнее (+лимит)", cost: 300 },
+  { id: "pullup_heal", name: "Подтяг-Медик", desc: "+5 HP за подтяг", cost: 200 },
+  { id: "rain_dance", name: "Танец дождя", desc: "+скорость под дождём", cost: 180 },
+  { id: "traffic_steal", name: "Кража трафика", desc: "E дольше (+лимит)", cost: 450 },
+  { id: "vyaly_bait", name: "Приманка Степа", desc: "Враги чаще на Степе", cost: 150 },
+];
+
+export const KOLYA_SKINS: { id: KolyaSkinId; name: string; desc: string; cost: number; premium?: boolean }[] = [
+  { id: "default", name: "Обычный Коля", desc: "Классика", cost: 0 },
+  { id: "raincoat", name: "Дождевик", desc: "Любит дождь", cost: 120 },
+  { id: "kalyan", name: "Закалённый", desc: "Кальян-стиль", cost: 200 },
+  { id: "alien", name: "Чужой", desc: "Зелёный режим", cost: 280 },
+  { id: "toxic_glow", name: "Токсичный Коля", desc: "Самый дорогой — с фото", cost: 999, premium: true },
+];
+
+export const SAB_SKINS: { id: SabSkinId; name: string; desc: string; cost: number }[] = [
+  { id: "default", name: "Семечкин", desc: "Базовый пёс", cost: 0 },
+  { id: "pug", name: "Мопс", desc: "Комичный", cost: 80 },
+  { id: "husky", name: "Хаски", desc: "Снежный", cost: 150 },
+  { id: "cyber", name: "Кибер-пёс", desc: "Неон", cost: 220 },
+  { id: "golden", name: "Золотой", desc: "Легенда", cost: 400 },
+];
 
 export const KOLAY_NICKNAMES = [
   "Колина Кол", "Клян", "Клянцы", "Закалённый Кальян", "КолЯН 3000", "Кол-Клян", "КАЛЬЯНЩИК",
@@ -91,12 +131,15 @@ export function isBossWave(wave: number): boolean {
 }
 
 export const SHOP_ITEMS: ShopItem[] = [
-  { id: "maxHp", name: "Запахо-броня", desc: "+15 HP Коле", baseCost: 80, maxLevel: 10, perLevel: 15 },
-  { id: "waterCap", name: "Бак 75Л+", desc: "+10Л воды макс", baseCost: 60, maxLevel: 5, perLevel: 10 },
-  { id: "speed", name: "Подтяг-скорость", desc: "+5% скорости", baseCost: 100, maxLevel: 8, perLevel: 0.05 },
-  { id: "stinkPower", name: "Усилитель вони", desc: "+3 урона Q", baseCost: 90, maxLevel: 10, perLevel: 3 },
-  { id: "alienCdReduce", name: "Чужой мозг", desc: "-8% кд E", baseCost: 120, maxLevel: 5, perLevel: 0.08 },
-  { id: "sabDmg", name: "Кость Семечкина", desc: "+4 урона псу", baseCost: 70, maxLevel: 10, perLevel: 4 },
+  { id: "maxHp", name: "Запахо-броня", desc: "+12 HP (макс 10)", baseCost: 80, maxLevel: 10, perLevel: 12 },
+  { id: "waterCap", name: "Бак 75Л+", desc: "+8Л макс (макс 6)", baseCost: 60, maxLevel: 6, perLevel: 8 },
+  { id: "speed", name: "Подтяг-скорость", desc: "+4% скорости (макс 8)", baseCost: 100, maxLevel: 8, perLevel: 0.04 },
+  { id: "stinkPower", name: "Усилитель вони", desc: "+2 урона Q (макс 8)", baseCost: 90, maxLevel: 8, perLevel: 2 },
+  { id: "alienCdReduce", name: "Чужой мозг", desc: "-6% кд E (макс 5)", baseCost: 120, maxLevel: 5, perLevel: 0.06 },
+  { id: "sabDmg", name: "Кость Семечкина", desc: "+3 урона псу (макс 8)", baseCost: 70, maxLevel: 8, perLevel: 3 },
+  { id: "waterEfficiency", name: "Экономия воды", desc: "-0.2Л за выстрел (макс 5)", baseCost: 85, maxLevel: 5, perLevel: 0.2 },
+  { id: "regenBoost", name: "Реген вони", desc: "+1 HP/сек Q (макс 4)", baseCost: 110, maxLevel: 4, perLevel: 1 },
+  { id: "alienDuration", name: "Фаза E+", desc: "+5% длит. E (макс 4)", baseCost: 140, maxLevel: 4, perLevel: 0.05 },
 ];
 
 export const WAVE_MODIFIERS = [

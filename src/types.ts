@@ -1,6 +1,9 @@
 export type GameState = "menu" | "playing" | "paused" | "gameover" | "win";
 
-export type TileType = "grass" | "grass2" | "tree" | "water" | "path" | "rock" | "wire" | "bush" | "mud";
+export type TileType =
+  | "grass" | "grass2" | "tree" | "water" | "path" | "rock" | "wire" | "bush" | "mud" | "snow" | "sand";
+
+export type BiomeType = "plains" | "forest" | "desert" | "snow" | "swamp" | "mountain";
 
 export interface MapTile {
   type: TileType;
@@ -117,9 +120,35 @@ export interface PlayerUpgrades {
   stinkPower: number;
   alienCdReduce: number;
   sabDmg: number;
+  waterEfficiency: number;
+  regenBoost: number;
+  alienDuration: number;
 }
 
 export type ShopUpgradeId = keyof PlayerUpgrades;
+
+export type AbilityId =
+  | "double_tap" | "stink_mega" | "water_splash" | "sab_fury"
+  | "pullup_heal" | "rain_dance" | "traffic_steal" | "vyaly_bait";
+
+export interface OwnedAbilities {
+  double_tap: boolean;
+  stink_mega: boolean;
+  water_splash: boolean;
+  sab_fury: boolean;
+  pullup_heal: boolean;
+  rain_dance: boolean;
+  traffic_steal: boolean;
+  vyaly_bait: boolean;
+}
+
+export type KolyaSkinId = "default" | "alien" | "raincoat" | "kalyan" | "toxic_glow";
+export type SabSkinId = "default" | "pug" | "husky" | "cyber" | "golden";
+
+export interface FriendEntry {
+  username: string;
+  addedAt: string;
+}
 
 export interface ShopItem {
   id: ShopUpgradeId;
@@ -140,6 +169,12 @@ export interface UserProfile {
   passwordHash: string;
   totalCoins: number;
   upgrades: PlayerUpgrades;
+  abilities: OwnedAbilities;
+  ownedKolyaSkins: KolyaSkinId[];
+  ownedSabSkins: SabSkinId[];
+  equippedKolyaSkin: KolyaSkinId;
+  equippedSabSkin: SabSkinId;
+  friends: FriendEntry[];
   gamesPlayed: number;
   bestScore: number;
 }

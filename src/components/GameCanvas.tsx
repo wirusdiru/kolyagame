@@ -1,25 +1,24 @@
 import { useRef, useEffect } from "react";
 import type { MutableRefObject } from "react";
-import type { TileGrid } from "../mapGenerator";
-import { TILE_SIZE, WORLD_H, WORLD_W } from "../mapGenerator";
+import type { InfiniteWorld } from "../infiniteWorld";
 import type { WorldSnapshot } from "../worldRef";
 import {
   drawTile, drawKolya, drawSabchak, drawEnemy, drawProjectile,
-  drawItem, drawStinkAura, drawBossSimple, drawFloatingTexts,
+  drawItem, drawStinkAura, drawBossSimple, drawFloatingTexts, skyColorsForBiome,
 } from "../sprites";
 
 interface GameCanvasProps {
   worldRef: MutableRefObject<WorldSnapshot>;
-  grid: TileGrid;
+  infiniteWorldRef: MutableRefObject<InfiniteWorld>;
   viewportW: number;
   viewportH: number;
   active: boolean;
 }
 
-export default function GameCanvas({ worldRef, grid, viewportW, viewportH, active }: GameCanvasProps) {
+export default function GameCanvas({
+  worldRef, infiniteWorldRef, viewportW, viewportH, active,
+}: GameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const gridRef = useRef(grid);
-  gridRef.current = grid;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -39,49 +38,39 @@ export default function GameCanvas({ worldRef, grid, viewportW, viewportH, activ
 
     const draw = () => {
       const w = worldRef.current;
-      const { viewportW: vw, viewportH: vh } = { viewportW, viewportH };
+      const iw = infiniteWorldRef.current;
+      const vw = viewportW;
+      const vh = viewportH;
       const cameraX = w.kx;
       const cameraY = w.ky;
       const tick = w.tick;
-      const g = gridRef.current;
+      const biome = iw.getBiomeAt(cameraX, cameraY);
+      const [s0, s1, s2] = skyColorsForBiome(biome, w.isRaining);
 
       const skyGrad = ctx.createLinearGradient(0, 0, 0, vh);
-      if (w.isRaining) {
-        skyGrad.addColorStop(0, "#0a1020");
-        skyGrad.addColorStop(1, "#0d1a2e");
-      } else {
-        skyGrad.addColorStop(0, "#1a2840");
-        skyGrad.addColorStop(0.4, "#2a4030");
-        skyGrad.addColorStop(1, "#1a3020");
-      }
+      skyGrad.addColorStop(0, s0);
+      skyGrad.addColorStop(0.45, s1);
+      skyGrad.addColorStop(1, s2);
       ctx.fillStyle = skyGrad;
       ctx.fillRect(0, 0, vw, vh);
 
       ctx.save();
       ctx.translate(-cameraX + vw / 2, -cameraY + vh / 2);
 
-      const tx0 = Math.max(0, Math.floor((cameraX - vw / 2) / TILE_SIZE) - 1);
-      const tx1 = Math.min(g[0].length - 1, Math.ceil((cameraX + vw / 2) / TILE_SIZE) + 1);
-      const ty0 = Math.max(0, Math.floor((cameraY - vh / 2) / TILE_SIZE) - 1);
-      const ty1 = Math.min(g.length - 1, Math.ceil((cameraY + vh / 2) / TILE_SIZE) + 1);
-
-      for (let ty = ty0; ty <= ty1; ty++) {
-        for (let tx = tx0; tx <= tx1; tx++) {
-          drawTile(ctx, g[ty][tx], tx * TILE_SIZE, ty * TILE_SIZE, tick);
-        }
+      const tiles = iw.tilesInView(cameraX, cameraY, vw, vh);
+      for (const t of tiles) {
+        drawTile(ctx, t.type, t.x, t.y, tick);
       }
-
-      ctx.strokeStyle = "rgba(80,120,200,0.25)";
-      ctx.lineWidth = 6;
-      ctx.strokeRect(4, 4, WORLD_W - 8, WORLD_H - 8);
 
       for (const item of w.items) drawItem(ctx, item, tick);
       for (const en of w.enemies) drawEnemy(ctx, en, tick);
       if (w.boss) drawBossSimple(ctx, w.boss, tick);
       for (const proj of w.projectiles) drawProjectile(ctx, proj);
       if (w.stinkActive) drawStinkAura(ctx, w.kx, w.ky, w.stinkRadius, tick);
-      if (w.sabHp > 0) drawSabchak(ctx, w.sabX, w.sabY, tick, w.sabAttacking);
-      drawKolya(ctx, w.kx, w.ky, tick, w.isAlien, w.pullupAnim);
+      if (w.sabHp > 0) {
+        drawSabchak(ctx, w.sabX, w.sabY, tick, w.sabAttacking, w.sabBiting, w.sabSkin);
+      }
+      drawKolya(ctx, w.kx, w.ky, tick, w.isAlien, w.pullupAnim, w.kolyaSkin);
       drawFloatingTexts(ctx, w.floatingTexts);
 
       ctx.restore();
@@ -104,7 +93,7 @@ export default function GameCanvas({ worldRef, grid, viewportW, viewportH, activ
 
     animId = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(animId);
-  }, [active, viewportW, viewportH, worldRef, grid]);
+  }, [active, viewportW, viewportH, worldRef, infiniteWorldRef]);
 
   return (
     <canvas

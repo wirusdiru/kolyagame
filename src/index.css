@@ -17,6 +17,72 @@ body {
   padding: 16px;
 }
 
+.menu-panel-wide { max-width: 720px; }
+
+.menu-tabs-wrap { gap: 4px; }
+
+.menu-hint { text-align: center; color: #666; font-size: 11px; margin-top: 8px; }
+
+.shop-section-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.shop-section-tabs button {
+  flex: 1;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid #444;
+  background: transparent;
+  color: #888;
+  cursor: pointer;
+}
+.shop-section-tabs button.active {
+  border-color: #ff6b35;
+  color: #ff6b35;
+  background: rgba(255, 107, 53, 0.15);
+}
+
+.shop-owned { color: #4f8; margin-left: 6px; }
+
+.skin-heading { color: #fd0; font-size: 13px; margin: 12px 0 8px; }
+
+.premium-skin { border-color: rgba(80, 255, 80, 0.4) !important; }
+
+.premium-badge { color: #4f4; }
+
+.skin-actions { flex-shrink: 0; }
+
+.menu-friends .friend-add { display: flex; gap: 8px; margin-bottom: 10px; }
+
+.friend-list { list-style: none; margin: 12px 0; }
+.friend-list li {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  margin-bottom: 6px;
+  color: #ccc;
+}
+.friend-remove {
+  background: transparent;
+  border: none;
+  color: #f66;
+  cursor: pointer;
+  font-size: 18px;
+}
+.friend-msg { color: #4f8; font-size: 12px; margin-bottom: 8px; }
+
+.coop-box {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #333;
+}
+.coop-box h4 { color: #8af; font-size: 12px; margin-bottom: 8px; }
+.coop-box .auth-input { margin: 8px 0; }
+.coop-msg { color: #aaa; font-size: 11px; margin-top: 8px; }
+
 .menu-panel {
   background: rgba(0, 0, 0, 0.9);
   border: 3px solid #ff6b35;

@@ -1,4 +1,7 @@
-import type { Boss, Enemy, FloatingText, Item, Projectile, TileType } from "./types";
+import type {
+  BiomeType, Boss, Enemy, FloatingText, Item, KolyaSkinId,
+  Projectile, SabSkinId, TileType,
+} from "./types";
 import { TILE_SIZE } from "./mapGenerator";
 
 const TILE_COLORS: Record<TileType, [string, string]> = {
@@ -11,7 +14,14 @@ const TILE_COLORS: Record<TileType, [string, string]> = {
   wire: ["#5a3a1a", "#8a5a2a"],
   bush: ["#2a5a2a", "#3a7a3a"],
   mud: ["#4a3a20", "#6a5a30"],
+  snow: ["#d8e8f0", "#b0c8d8"],
+  sand: ["#c4a35a", "#a08040"],
 };
+
+const toxicImg = new Image();
+toxicImg.src = "/skins/kolya_toxic_glow.png";
+let toxicImgReady = false;
+toxicImg.onload = () => { toxicImgReady = true; };
 
 export function drawTile(ctx: CanvasRenderingContext2D, type: TileType, x: number, y: number, tick: number) {
   const [c1, c2] = TILE_COLORS[type];
@@ -70,20 +80,49 @@ export function drawTile(ctx: CanvasRenderingContext2D, type: TileType, x: numbe
   }
 }
 
-export function drawKolya(ctx: CanvasRenderingContext2D, x: number, y: number, tick: number, isAlien: boolean, pullup: boolean) {
+export function drawKolya(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  tick: number,
+  isAlien: boolean,
+  pullup: boolean,
+  skinId: KolyaSkinId = "default",
+) {
   const bob = pullup ? Math.sin(tick * 0.5) * 12 : Math.sin(tick * 0.08) * 3;
   ctx.save();
   ctx.translate(x, y + bob);
 
-  // Тень
+  if (skinId === "toxic_glow" && toxicImgReady) {
+    const pulse = 1 + Math.sin(tick * 0.12) * 0.04;
+    const w = 72 * pulse;
+    const h = 96 * pulse;
+    ctx.shadowColor = "#44ff44";
+    ctx.shadowBlur = 18 + Math.sin(tick * 0.15) * 8;
+    ctx.drawImage(toxicImg, -w / 2, -h + 20, w, h);
+    ctx.shadowBlur = 0;
+    ctx.restore();
+    return;
+  }
+
   ctx.fillStyle = "rgba(0,0,0,0.25)";
   ctx.beginPath();
   ctx.ellipse(0, 28, 22, 8, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  const skin = isAlien ? "#88ffaa" : "#ffcc99";
-  const shirt = isAlien ? "#226633" : "#3366cc";
-  const pants = "#223355";
+  const skinPalette: Record<KolyaSkinId, { skin: string; shirt: string }> = {
+    default: { skin: "#ffcc99", shirt: "#3366cc" },
+    raincoat: { skin: "#ffcc99", shirt: "#224466" },
+    kalyan: { skin: "#ffcc99", shirt: "#663300" },
+    alien: { skin: "#88ffaa", shirt: "#226633" },
+    toxic_glow: { skin: "#aaff88", shirt: "#22aa22" },
+  };
+  const pal = isAlien
+    ? { skin: "#88ffaa", shirt: "#226633" }
+    : skinPalette[skinId] ?? skinPalette.default;
+  const skin = pal.skin;
+  const shirt = pal.shirt;
+  const pants = skinId === "raincoat" ? "#1a3a5a" : "#223355";
 
   // Ноги (очень длинные — как чемодан)
   ctx.fillStyle = pants;
@@ -97,7 +136,7 @@ export function drawKolya(ctx: CanvasRenderingContext2D, x: number, y: number, t
   ctx.fillStyle = shirt;
   ctx.fillRect(-14, -18, 28, 28);
   // Вонь линии
-  if (!isAlien) {
+  if (!isAlien && skinId !== "toxic_glow") {
     ctx.strokeStyle = `rgba(150,255,0,${0.4 + Math.sin(tick * 0.15) * 0.3})`;
     for (let i = 0; i < 4; i++) {
       ctx.beginPath();
@@ -148,6 +187,14 @@ export function drawKolya(ctx: CanvasRenderingContext2D, x: number, y: number, t
   ctx.fillStyle = "#66aaff";
   ctx.fillRect(20, 2, 10, 8);
 
+  if (skinId === "toxic_glow" && !isAlien) {
+    ctx.strokeStyle = `rgba(80,255,80,${0.5 + Math.sin(tick * 0.2) * 0.3})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, -35, 22, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
   if (isAlien) {
     ctx.strokeStyle = "#00ff88";
     ctx.lineWidth = 2;
@@ -166,20 +213,36 @@ export function drawKolya(ctx: CanvasRenderingContext2D, x: number, y: number, t
   ctx.restore();
 }
 
-export function drawSabchak(ctx: CanvasRenderingContext2D, x: number, y: number, tick: number, attacking: boolean) {
-  const bob = Math.sin(tick * 0.12) * 3;
+export function drawSabchak(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  tick: number,
+  attacking: boolean,
+  biting = false,
+  skinId: SabSkinId = "default",
+) {
+  const bob = biting ? Math.sin(tick * 0.4) * 6 : Math.sin(tick * 0.12) * 3;
   ctx.save();
   ctx.translate(x, y + bob);
+
+  const sabColors: Record<SabSkinId, [string, string]> = {
+    default: ["#c8860a", "#8a5a00"],
+    pug: ["#c8a070", "#6a5040"],
+    husky: ["#aab8c8", "#667788"],
+    cyber: ["#00cccc", "#004466"],
+    golden: ["#ffd700", "#b8860b"],
+  };
+  const [c1, c2] = sabColors[skinId] ?? sabColors.default;
 
   ctx.fillStyle = "rgba(0,0,0,0.2)";
   ctx.beginPath();
   ctx.ellipse(0, 18, 16, 6, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Тело
   const fg = ctx.createLinearGradient(-15, -5, 15, 10);
-  fg.addColorStop(0, "#c8860a");
-  fg.addColorStop(1, "#8a5a00");
+  fg.addColorStop(0, c1);
+  fg.addColorStop(1, c2);
   ctx.fillStyle = fg;
   ctx.beginPath();
   ctx.ellipse(0, 2, 18, 12, 0, 0, Math.PI * 2);
@@ -188,11 +251,10 @@ export function drawSabchak(ctx: CanvasRenderingContext2D, x: number, y: number,
   // Голова
   ctx.beginPath();
   ctx.arc(14, -6, 10, 0, Math.PI * 2);
-  ctx.fillStyle = "#daa520";
+  ctx.fillStyle = c1;
   ctx.fill();
 
-  // Уши
-  ctx.fillStyle = "#b8860b";
+  ctx.fillStyle = c2;
   ctx.beginPath();
   ctx.moveTo(8, -14);
   ctx.lineTo(4, -22);
@@ -224,16 +286,30 @@ export function drawSabchak(ctx: CanvasRenderingContext2D, x: number, y: number,
   ctx.stroke();
   ctx.restore();
 
-  if (attacking) {
+  if (attacking || biting) {
     ctx.fillStyle = "#eee";
-    ctx.fillRect(20, -4, 14, 5);
-    ctx.fillStyle = "#ccc";
+    const bx = biting ? 28 : 20;
+    ctx.fillRect(bx, -6, biting ? 18 : 14, biting ? 8 : 5);
+    ctx.fillStyle = "#faa";
     ctx.beginPath();
-    ctx.arc(34, -2, 4, 0, Math.PI * 2);
+    ctx.moveTo(bx + 14, -4);
+    ctx.lineTo(bx + 22, 0);
+    ctx.lineTo(bx + 14, 4);
     ctx.fill();
   }
 
   ctx.restore();
+}
+
+export function skyColorsForBiome(biome: BiomeType, raining: boolean): [string, string, string] {
+  if (raining) return ["#0a1020", "#152535", "#0d1a2e"];
+  switch (biome) {
+    case "snow": return ["#8ab0c8", "#c8dce8", "#e8f0f8"];
+    case "desert": return ["#c89050", "#e8c070", "#d8a848"];
+    case "swamp": return ["#1a2830", "#2a4038", "#1a3028"];
+    case "mountain": return ["#506080", "#7088a0", "#405060"];
+    default: return ["#1a2840", "#2a4030", "#1a3020"];
+  }
 }
 
 export function drawEnemy(ctx: CanvasRenderingContext2D, enemy: Enemy, tick: number) {

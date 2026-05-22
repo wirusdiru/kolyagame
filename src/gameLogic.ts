@@ -1,6 +1,9 @@
-import type { Boss, Enemy, FloatingText, GameStats, Item, ItemType, PlayerUpgrades } from "./types";
+import type {
+  Boss, Enemy, FloatingText, GameStats, Item, ItemType,
+  OwnedAbilities, PlayerUpgrades,
+} from "./types";
 import { ALL_BOSS_TYPES, ENEMY_POINTS, isBossWave } from "./constants";
-import { findLandPosition, type TileGrid } from "./mapGenerator";
+import { findLandPosition, type InfiniteWorld } from "./infiniteWorld";
 
 let _id = 1;
 export const nextId = () => _id++;
@@ -19,38 +22,38 @@ function getAvailableEnemies(wave: number): Enemy["type"][] {
   return ALL_ENEMY_TYPES;
 }
 
-export function spawnEnemy(wave: number, playerX: number, playerY: number, grid: TileGrid): Enemy {
+export function spawnEnemy(wave: number, playerX: number, playerY: number, world: InfiniteWorld): Enemy {
   const available = getAvailableEnemies(wave);
   const type = available[Math.floor(Math.random() * available.length)];
-  const pos = findLandPosition(grid, playerX, playerY, 320, 520);
+  const pos = findLandPosition(world, playerX, playerY, 320, 520);
   const x = pos.x;
   const y = pos.y;
 
   const hpMap: Record<Enemy["type"], number> = {
-    vyaly_step: 8 + wave * 2,
-    router: 6 + wave * 2,
-    lag_ball: 3 + wave,
-    tree_ghost: 10 + wave * 2,
-    wifi_drone: 5 + wave * 2,
-    cable_snake: 7 + wave * 2,
-    lag_ghost: 9 + wave * 2,
-    provider_golem: 14 + wave * 3,
-    child_swarm: 4 + Math.floor(wave / 2),
-    rain_drop: 4 + wave,
-    kalyan_spirit: 12 + wave * 2,
+    vyaly_step: 10 + wave * 2,
+    router: 7 + wave * 2,
+    lag_ball: 4 + wave,
+    tree_ghost: 11 + wave * 2,
+    wifi_drone: 6 + wave * 2,
+    cable_snake: 8 + wave * 2,
+    lag_ghost: 10 + wave * 2,
+    provider_golem: 16 + wave * 3,
+    child_swarm: 5 + Math.floor(wave / 2),
+    rain_drop: 5 + wave,
+    kalyan_spirit: 13 + wave * 2,
   };
   const speedMap: Record<Enemy["type"], number> = {
-    vyaly_step: 1.2 + wave * 0.07,
-    router: 0.8 + wave * 0.05,
-    lag_ball: 2.2 + wave * 0.1,
-    tree_ghost: 0.6 + wave * 0.04,
-    wifi_drone: 2.5 + wave * 0.11,
-    cable_snake: 1.8 + wave * 0.09,
-    lag_ghost: 1.0 + wave * 0.06,
-    provider_golem: 0.5 + wave * 0.03,
-    child_swarm: 2.8 + wave * 0.12,
-    rain_drop: 3.0 + wave * 0.13,
-    kalyan_spirit: 1.4 + wave * 0.08,
+    vyaly_step: 1.1 + wave * 0.06,
+    router: 0.75 + wave * 0.04,
+    lag_ball: 2.0 + wave * 0.09,
+    tree_ghost: 0.55 + wave * 0.035,
+    wifi_drone: 2.3 + wave * 0.1,
+    cable_snake: 1.6 + wave * 0.08,
+    lag_ghost: 0.95 + wave * 0.055,
+    provider_golem: 0.48 + wave * 0.028,
+    child_swarm: 2.6 + wave * 0.11,
+    rain_drop: 2.8 + wave * 0.12,
+    kalyan_spirit: 1.3 + wave * 0.075,
   };
   const hp = hpMap[type];
   return {
@@ -97,7 +100,7 @@ export function spawnItem(x: number, y: number, forceType?: ItemType): Item {
 export { isBossWave };
 
 export function getWaveTarget(wave: number): number {
-  return 10 + wave * 4 + Math.floor(wave / 5) * 5;
+  return 8 + wave * 3 + Math.floor(wave / 5) * 4;
 }
 
 export function getEnemyPoints(type: Enemy["type"]): number {
@@ -122,14 +125,27 @@ export function applyItemEffect(
   }
 }
 
-export function applyUpgrades(base: { maxHp: number; waterCap: number; speed: number }, up: PlayerUpgrades) {
+export function applyUpgrades(
+  base: { maxHp: number; waterCap: number; speed: number },
+  up: PlayerUpgrades,
+  abilities?: OwnedAbilities,
+) {
+  const alienDurBonus = Math.min(0.2, up.alienDuration * 0.05 + (abilities?.traffic_steal ? 0.08 : 0));
   return {
-    maxHp: base.maxHp + up.maxHp * 15,
-    waterCap: base.waterCap + up.waterCap * 10,
-    speed: base.speed * (1 + up.speed * 0.05),
-    stinkDmg: 5 + up.stinkPower * 3,
-    alienCd: Math.floor(600 * (1 - up.alienCdReduce * 0.08)),
-    sabDmg: 12 + up.sabDmg * 4,
+    maxHp: base.maxHp + up.maxHp * 12,
+    waterCap: base.waterCap + up.waterCap * 8,
+    speed: base.speed * (1 + up.speed * 0.04),
+    stinkDmg: 5 + up.stinkPower * 2,
+    alienCd: Math.max(240, Math.floor(600 * (1 - up.alienCdReduce * 0.06))),
+    alienDurRatio: 0.25 + alienDurBonus,
+    sabDmg: 12 + up.sabDmg * 3,
+    waterPerShot: Math.max(1.5, 3 - up.waterEfficiency * 0.2 - (abilities?.water_splash ? 1 : 0)),
+    stinkRadiusMult: 1 + (abilities?.stink_mega ? 0.25 : 0),
+    regenOnStink: up.regenBoost,
+    doubleShot: abilities?.double_tap ?? false,
+    sabFury: abilities?.sab_fury ?? false,
+    pullupHealBonus: abilities?.pullup_heal ? 5 : 0,
+    rainSpeed: abilities?.rain_dance ? 1.12 : 1,
   };
 }
 

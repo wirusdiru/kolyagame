@@ -1,12 +1,18 @@
-import type { LeaderboardEntry, PlayerUpgrades, UserProfile } from "./types";
+import type {
+  AbilityId, FriendEntry, KolyaSkinId, LeaderboardEntry,
+  OwnedAbilities, PlayerUpgrades, SabSkinId, UserProfile,
+} from "./types";
+import { DEFAULT_ABILITIES } from "./constants";
 import { getSupabase, isCloudEnabled } from "./supabaseClient";
 
-const USERS_KEY = "kolya_users_v2";
+const USERS_KEY = "kolya_users_v3";
 const LEADERBOARD_KEY = "kolya_leaderboard_v2";
 const SESSION_KEY = "kolya_session_v3";
+const EXTRAS_KEY = "kolya_extras_v1";
 
 const DEFAULT_UPGRADES: PlayerUpgrades = {
   maxHp: 0, waterCap: 0, speed: 0, stinkPower: 0, alienCdReduce: 0, sabDmg: 0,
+  waterEfficiency: 0, regenBoost: 0, alienDuration: 0,
 };
 
 export interface Session {
@@ -35,19 +41,62 @@ export function getSession(): Session | null {
   }
 }
 
+function defaultProfile(username: string, passwordHash: string): UserProfile {
+  return {
+    username,
+    passwordHash,
+    totalCoins: 0,
+    upgrades: { ...DEFAULT_UPGRADES },
+    abilities: { ...DEFAULT_ABILITIES },
+    ownedKolyaSkins: ["default"],
+    ownedSabSkins: ["default"],
+    equippedKolyaSkin: "default",
+    equippedSabSkin: "default",
+    friends: [],
+    gamesPlayed: 0,
+    bestScore: 0,
+  };
+}
+
+function loadExtras(): Record<string, Partial<UserProfile>> {
+  try {
+    return JSON.parse(localStorage.getItem(EXTRAS_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function saveExtras(username: string, data: Partial<UserProfile>) {
+  const all = loadExtras();
+  all[username.toLowerCase()] = { ...all[username.toLowerCase()], ...data };
+  localStorage.setItem(EXTRAS_KEY, JSON.stringify(all));
+}
+
+function mergeExtras(profile: UserProfile): UserProfile {
+  const ex = loadExtras()[profile.username.toLowerCase()];
+  if (!ex) return profile;
+  return {
+    ...profile,
+    abilities: { ...DEFAULT_ABILITIES, ...profile.abilities, ...ex.abilities },
+    ownedKolyaSkins: ex.ownedKolyaSkins ?? profile.ownedKolyaSkins,
+    ownedSabSkins: ex.ownedSabSkins ?? profile.ownedSabSkins,
+    equippedKolyaSkin: ex.equippedKolyaSkin ?? profile.equippedKolyaSkin,
+    equippedSabSkin: ex.equippedSabSkin ?? profile.equippedSabSkin,
+    friends: ex.friends ?? profile.friends,
+  };
+}
+
 function rowToProfile(row: Record<string, unknown>): UserProfile {
   const upgrades = (row.upgrades as PlayerUpgrades) ?? { ...DEFAULT_UPGRADES };
-  return {
-    username: String(row.username),
-    passwordHash: String(row.password_hash),
+  const base = defaultProfile(String(row.username), String(row.password_hash));
+  return mergeExtras({
+    ...base,
     totalCoins: Number(row.total_coins ?? 0),
     upgrades: { ...DEFAULT_UPGRADES, ...upgrades },
     gamesPlayed: Number(row.games_played ?? 0),
     bestScore: Number(row.best_score ?? 0),
-  };
+  });
 }
-
-// --- LOCAL FALLBACK ---
 
 function loadUsers(): Record<string, UserProfile> {
   try {
@@ -55,7 +104,17 @@ function loadUsers(): Record<string, UserProfile> {
     const out: Record<string, UserProfile> = {};
     for (const [k, v] of Object.entries(raw)) {
       const p = v as UserProfile;
-      out[k] = { ...p, passwordHash: p.passwordHash ?? (p as unknown as { password_hash?: string }).password_hash ?? "" };
+      out[k] = mergeExtras({
+        ...defaultProfile(p.username ?? k, p.passwordHash ?? ""),
+        ...p,
+        upgrades: { ...DEFAULT_UPGRADES, ...p.upgrades },
+        abilities: { ...DEFAULT_ABILITIES, ...p.abilities },
+        ownedKolyaSkins: p.ownedKolyaSkins ?? ["default"],
+        ownedSabSkins: p.ownedSabSkins ?? ["default"],
+        equippedKolyaSkin: p.equippedKolyaSkin ?? "default",
+        equippedSabSkin: p.equippedSabSkin ?? "default",
+        friends: p.friends ?? [],
+      });
     }
     return out;
   } catch {
@@ -75,10 +134,7 @@ function localRegister(username: string, password: string): { ok: boolean; error
   const users = loadUsers();
   const key = name.toLowerCase();
   if (users[key]) return { ok: false, error: "Игрок уже есть" };
-  users[key] = {
-    username: name, passwordHash: h, totalCoins: 0,
-    upgrades: { ...DEFAULT_UPGRADES }, gamesPlayed: 0, bestScore: 0,
-  };
+  users[key] = defaultProfile(name, h);
   saveUsers(users);
   saveSession({ username: key, passwordHash: h });
   return { ok: true };
@@ -94,8 +150,6 @@ function localLogin(username: string, password: string): { ok: boolean; error?: 
   return { ok: true };
 }
 
-// --- CLOUD ---
-
 async function cloudRegister(username: string, password: string): Promise<{ ok: boolean; error?: string }> {
   const sb = await getSupabase();
   if (!sb) return { ok: false, error: "Сервер недоступен" };
@@ -107,6 +161,7 @@ async function cloudRegister(username: string, password: string): Promise<{ ok: 
   if (error) return { ok: false, error: error.message };
   const res = data as { ok: boolean; error?: string };
   if (!res.ok) return { ok: false, error: res.error ?? "Ошибка" };
+  saveExtras(username.trim().toLowerCase(), defaultProfile(username, h));
   saveSession({ username: username.trim().toLowerCase(), passwordHash: h });
   return { ok: true };
 }
@@ -142,6 +197,14 @@ async function cloudFetchProfile(session: Session): Promise<UserProfile | null> 
 async function cloudSaveProfile(profile: UserProfile, session: Session): Promise<boolean> {
   const sb = await getSupabase();
   if (!sb) return false;
+  saveExtras(profile.username, {
+    abilities: profile.abilities,
+    ownedKolyaSkins: profile.ownedKolyaSkins,
+    ownedSabSkins: profile.ownedSabSkins,
+    equippedKolyaSkin: profile.equippedKolyaSkin,
+    equippedSabSkin: profile.equippedSabSkin,
+    friends: profile.friends,
+  });
   const { data, error } = await sb.rpc("update_profile", {
     p_username: session.username,
     p_password_hash: session.passwordHash,
@@ -153,8 +216,6 @@ async function cloudSaveProfile(profile: UserProfile, session: Session): Promise
   if (error) return false;
   return (data as { ok: boolean }).ok;
 }
-
-// --- PUBLIC API ---
 
 export async function register(username: string, password: string) {
   if (isCloudEnabled) return cloudRegister(username, password);
@@ -204,6 +265,71 @@ export async function buyUpgrade(id: keyof PlayerUpgrades, cost: number): Promis
   u.upgrades[id] += 1;
   await saveUserProfile(u);
   return true;
+}
+
+export async function buyAbility(id: AbilityId, cost: number): Promise<boolean> {
+  const u = await fetchCurrentUser();
+  if (!u || u.totalCoins < cost || u.abilities[id]) return false;
+  u.totalCoins -= cost;
+  u.abilities[id] = true;
+  await saveUserProfile(u);
+  return true;
+}
+
+export async function buyKolyaSkin(id: KolyaSkinId, cost: number): Promise<boolean> {
+  const u = await fetchCurrentUser();
+  if (!u || u.totalCoins < cost || u.ownedKolyaSkins.includes(id)) return false;
+  u.totalCoins -= cost;
+  u.ownedKolyaSkins.push(id);
+  await saveUserProfile(u);
+  return true;
+}
+
+export async function buySabSkin(id: SabSkinId, cost: number): Promise<boolean> {
+  const u = await fetchCurrentUser();
+  if (!u || u.totalCoins < cost || u.ownedSabSkins.includes(id)) return false;
+  u.totalCoins -= cost;
+  u.ownedSabSkins.push(id);
+  await saveUserProfile(u);
+  return true;
+}
+
+export async function equipKolyaSkin(id: KolyaSkinId): Promise<boolean> {
+  const u = await fetchCurrentUser();
+  if (!u || !u.ownedKolyaSkins.includes(id)) return false;
+  u.equippedKolyaSkin = id;
+  await saveUserProfile(u);
+  return true;
+}
+
+export async function equipSabSkin(id: SabSkinId): Promise<boolean> {
+  const u = await fetchCurrentUser();
+  if (!u || !u.ownedSabSkins.includes(id)) return false;
+  u.equippedSabSkin = id;
+  await saveUserProfile(u);
+  return true;
+}
+
+export async function addFriend(friendName: string): Promise<{ ok: boolean; error?: string }> {
+  const u = await fetchCurrentUser();
+  if (!u) return { ok: false, error: "Войди в аккаунт" };
+  const name = friendName.trim();
+  if (name.length < 2) return { ok: false, error: "Ник слишком короткий" };
+  if (name.toLowerCase() === u.username.toLowerCase()) return { ok: false, error: "Это ты" };
+  if (u.friends.some(f => f.username.toLowerCase() === name.toLowerCase())) {
+    return { ok: false, error: "Уже в друзьях" };
+  }
+  if (u.friends.length >= 20) return { ok: false, error: "Макс 20 друзей" };
+  u.friends.push({ username: name, addedAt: new Date().toISOString() });
+  await saveUserProfile(u);
+  return { ok: true };
+}
+
+export async function removeFriend(friendName: string): Promise<void> {
+  const u = await fetchCurrentUser();
+  if (!u) return;
+  u.friends = u.friends.filter(f => f.username.toLowerCase() !== friendName.toLowerCase());
+  await saveUserProfile(u);
 }
 
 export async function recordGameEnd(score: number, wave: number, coinsEarned: number): Promise<void> {
@@ -262,4 +388,17 @@ export async function getLeaderboard(): Promise<LeaderboardEntry[]> {
 export async function getAppliedUpgrades(): Promise<PlayerUpgrades> {
   const u = await fetchCurrentUser();
   return u?.upgrades ?? { ...DEFAULT_UPGRADES };
+}
+
+export async function getEquippedSkins(): Promise<{ kolya: KolyaSkinId; sab: SabSkinId }> {
+  const u = await fetchCurrentUser();
+  return {
+    kolya: u?.equippedKolyaSkin ?? "default",
+    sab: u?.equippedSabSkin ?? "default",
+  };
+}
+
+export async function getOwnedAbilities(): Promise<OwnedAbilities> {
+  const u = await fetchCurrentUser();
+  return u?.abilities ?? { ...DEFAULT_ABILITIES };
 }

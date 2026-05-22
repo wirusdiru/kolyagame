@@ -20,6 +20,10 @@ export interface WorldSnapshot {
   isRaining: boolean;
   tick: number;
   wave: number;
+  kolyaSkin: import("./types").KolyaSkinId;
+  sabSkin: import("./types").SabSkinId;
+  sabBiting: boolean;
+  biomeLabel: string;
 }
 
 export function emptyWorld(): WorldSnapshot {
@@ -28,5 +32,6 @@ export function emptyWorld(): WorldSnapshot {
     isAlien: false, pullupAnim: false, stinkActive: false, stinkRadius: 130,
     enemies: [], boss: null, projectiles: [], items: [], floatingTexts: [],
     isRaining: false, tick: 0, wave: 1,
+    kolyaSkin: "default", sabSkin: "default", sabBiting: false, biomeLabel: "",
   };
 }
