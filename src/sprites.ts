@@ -18,10 +18,10 @@ const TILE_COLORS: Record<TileType, [string, string]> = {
   sand: ["#c4a35a", "#a08040"],
 };
 
-const toxicImg = new Image();
-toxicImg.src = "/skins/kolya_toxic_glow.png";
-let toxicImgReady = false;
-toxicImg.onload = () => { toxicImgReady = true; };
+const kolya1Img = new Image();
+kolya1Img.src = "/skins/kolya1.png";
+let kolya1ImgReady = false;
+kolya1Img.onload = () => { kolya1ImgReady = true; };
 
 export function drawTile(ctx: CanvasRenderingContext2D, type: TileType, x: number, y: number, tick: number) {
   const [c1, c2] = TILE_COLORS[type];
@@ -93,13 +93,13 @@ export function drawKolya(
   ctx.save();
   ctx.translate(x, y + bob);
 
-  if (skinId === "toxic_glow" && toxicImgReady) {
+  if (skinId === "kolya1" && kolya1ImgReady) {
     const pulse = 1 + Math.sin(tick * 0.12) * 0.04;
     const w = 72 * pulse;
     const h = 96 * pulse;
     ctx.shadowColor = "#44ff44";
     ctx.shadowBlur = 18 + Math.sin(tick * 0.15) * 8;
-    ctx.drawImage(toxicImg, -w / 2, -h + 20, w, h);
+    ctx.drawImage(kolya1Img, -w / 2, -h + 20, w, h);
     ctx.shadowBlur = 0;
     ctx.restore();
     return;
@@ -115,7 +115,7 @@ export function drawKolya(
     raincoat: { skin: "#ffcc99", shirt: "#224466" },
     kalyan: { skin: "#ffcc99", shirt: "#663300" },
     alien: { skin: "#88ffaa", shirt: "#226633" },
-    toxic_glow: { skin: "#aaff88", shirt: "#22aa22" },
+    kolya1: { skin: "#aaff88", shirt: "#22aa22" },
   };
   const pal = isAlien
     ? { skin: "#88ffaa", shirt: "#226633" }
@@ -136,7 +136,7 @@ export function drawKolya(
   ctx.fillStyle = shirt;
   ctx.fillRect(-14, -18, 28, 28);
   // Вонь линии
-  if (!isAlien && skinId !== "toxic_glow") {
+  if (!isAlien && skinId !== "kolya1") {
     ctx.strokeStyle = `rgba(150,255,0,${0.4 + Math.sin(tick * 0.15) * 0.3})`;
     for (let i = 0; i < 4; i++) {
       ctx.beginPath();
@@ -187,7 +187,7 @@ export function drawKolya(
   ctx.fillStyle = "#66aaff";
   ctx.fillRect(20, 2, 10, 8);
 
-  if (skinId === "toxic_glow" && !isAlien) {
+  if (skinId === "kolya1" && !isAlien) {
     ctx.strokeStyle = `rgba(80,255,80,${0.5 + Math.sin(tick * 0.2) * 0.3})`;
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -223,81 +223,127 @@ export function drawSabchak(
   skinId: SabSkinId = "default",
 ) {
   const bob = biting ? Math.sin(tick * 0.4) * 6 : Math.sin(tick * 0.12) * 3;
+  const legPhase = Math.sin(tick * 0.15) * 3;
   ctx.save();
   ctx.translate(x, y + bob);
 
-  const sabColors: Record<SabSkinId, [string, string]> = {
-    default: ["#c8860a", "#8a5a00"],
-    pug: ["#c8a070", "#6a5040"],
-    husky: ["#aab8c8", "#667788"],
-    cyber: ["#00cccc", "#004466"],
-    golden: ["#ffd700", "#b8860b"],
+  const sabColors: Record<SabSkinId, [string, string, string]> = {
+    default: ["#d4a017", "#8b6914", "#5a4008"],
+    pug: ["#c8a070", "#8a6040", "#5a3820"],
+    husky: ["#d0dce8", "#8090a0", "#506070"],
+    cyber: ["#00e5cc", "#0088aa", "#004455"],
+    golden: ["#ffd54f", "#daa520", "#a67c00"],
   };
-  const [c1, c2] = sabColors[skinId] ?? sabColors.default;
+  const [fur, furDark, nose] = sabColors[skinId] ?? sabColors.default;
 
-  ctx.fillStyle = "rgba(0,0,0,0.2)";
+  ctx.fillStyle = "rgba(0,0,0,0.22)";
   ctx.beginPath();
-  ctx.ellipse(0, 18, 16, 6, 0, 0, Math.PI * 2);
+  ctx.ellipse(2, 20, 20, 7, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  const fg = ctx.createLinearGradient(-15, -5, 15, 10);
-  fg.addColorStop(0, c1);
-  fg.addColorStop(1, c2);
-  ctx.fillStyle = fg;
-  ctx.beginPath();
-  ctx.ellipse(0, 2, 18, 12, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Голова
-  ctx.beginPath();
-  ctx.arc(14, -6, 10, 0, Math.PI * 2);
-  ctx.fillStyle = c1;
-  ctx.fill();
-
-  ctx.fillStyle = c2;
-  ctx.beginPath();
-  ctx.moveTo(8, -14);
-  ctx.lineTo(4, -22);
-  ctx.lineTo(12, -16);
-  ctx.fill();
-  ctx.beginPath();
-  ctx.moveTo(18, -14);
-  ctx.lineTo(22, -22);
-  ctx.lineTo(16, -16);
-  ctx.fill();
-
-  // Глаза
-  ctx.fillStyle = "#111";
-  ctx.beginPath();
-  ctx.arc(11, -7, 2, 0, Math.PI * 2);
-  ctx.arc(17, -7, 2, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Хвост
-  const tailWag = Math.sin(tick * 0.2) * 0.5;
+  // Хвост сзади
+  const tailWag = Math.sin(tick * 0.22) * 0.45;
   ctx.save();
-  ctx.translate(-16, 0);
+  ctx.translate(-14, -2);
   ctx.rotate(tailWag);
-  ctx.strokeStyle = "#c8860a";
-  ctx.lineWidth = 4;
+  ctx.strokeStyle = fur;
+  ctx.lineWidth = 5;
+  ctx.lineCap = "round";
   ctx.beginPath();
   ctx.moveTo(0, 0);
-  ctx.quadraticCurveTo(-12, -8, -8, -16);
+  ctx.quadraticCurveTo(-14, -10, -10, -22);
   ctx.stroke();
   ctx.restore();
 
-  if (attacking || biting) {
-    ctx.fillStyle = "#eee";
-    const bx = biting ? 28 : 20;
-    ctx.fillRect(bx, -6, biting ? 18 : 14, biting ? 8 : 5);
-    ctx.fillStyle = "#faa";
+  // Тело
+  ctx.fillStyle = fur;
+  ctx.beginPath();
+  ctx.ellipse(-2, 4, 20, 11, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = furDark;
+  ctx.beginPath();
+  ctx.ellipse(-6, 6, 10, 7, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 4 лапы
+  ctx.fillStyle = furDark;
+  const legs = [[-10, 12], [-2, 12], [6, 12], [14, 12]] as const;
+  legs.forEach(([lx, ly], i) => {
+    const lift = (i % 2 === 0 ? legPhase : -legPhase) * (biting ? 0.3 : 1);
+    ctx.fillRect(lx, ly + lift, 5, 10);
+    ctx.fillStyle = "#222";
+    ctx.fillRect(lx - 1, ly + 8 + lift, 7, 4);
+    ctx.fillStyle = furDark;
+  });
+
+  // Голова + морда вперёд (собака, не кот)
+  ctx.fillStyle = fur;
+  ctx.beginPath();
+  ctx.ellipse(16, -4, 11, 10, 0.2, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Морда
+  ctx.fillStyle = furDark;
+  ctx.beginPath();
+  ctx.ellipse(26, -2, 9, 7, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = nose;
+  ctx.beginPath();
+  ctx.ellipse(33, -3, 4, 3, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Висячие уши
+  ctx.fillStyle = furDark;
+  ctx.beginPath();
+  ctx.ellipse(10, -2, 5, 9, -0.4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(20, -2, 5, 9, 0.35, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "#111";
+  ctx.beginPath();
+  ctx.arc(18, -6, 2.5, 0, Math.PI * 2);
+  ctx.arc(24, -6, 2.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Язык при укусе
+  if (biting) {
+    ctx.fillStyle = "#f66";
     ctx.beginPath();
-    ctx.moveTo(bx + 14, -4);
-    ctx.lineTo(bx + 22, 0);
-    ctx.lineTo(bx + 14, 4);
+    ctx.ellipse(30, 2, 4, 6, 0.2, 0, Math.PI * 2);
     ctx.fill();
   }
 
+  if (attacking && !biting) {
+    ctx.fillStyle = "#eee";
+    ctx.fillRect(34, -4, 12, 4);
+    ctx.beginPath();
+    ctx.arc(46, -2, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+export function drawOnlinePlayer(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  tick: number,
+  username: string,
+) {
+  ctx.save();
+  ctx.translate(x, y + Math.sin(tick * 0.1) * 2);
+  ctx.globalAlpha = 0.92;
+  drawKolya(ctx, 0, 0, tick, false, false, "default");
+  ctx.globalAlpha = 1;
+  ctx.font = "bold 10px Consolas, monospace";
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#000";
+  ctx.fillText(username, 1, -58);
+  ctx.fillStyle = "#6cf";
+  ctx.fillText(username, 0, -59);
   ctx.restore();
 }
 

@@ -5,6 +5,7 @@ import type { WorldSnapshot } from "../worldRef";
 import {
   drawTile, drawKolya, drawSabchak, drawEnemy, drawProjectile,
   drawItem, drawStinkAura, drawBossSimple, drawFloatingTexts, skyColorsForBiome,
+  drawOnlinePlayer,
 } from "../sprites";
 
 interface GameCanvasProps {
@@ -67,6 +68,9 @@ export default function GameCanvas({
       if (w.boss) drawBossSimple(ctx, w.boss, tick);
       for (const proj of w.projectiles) drawProjectile(ctx, proj);
       if (w.stinkActive) drawStinkAura(ctx, w.kx, w.ky, w.stinkRadius, tick);
+      for (const peer of w.onlinePeers) {
+        drawOnlinePlayer(ctx, peer.x, peer.y, tick, peer.username);
+      }
       if (w.sabHp > 0) {
         drawSabchak(ctx, w.sabX, w.sabY, tick, w.sabAttacking, w.sabBiting, w.sabSkin);
       }

@@ -29,7 +29,7 @@ export const KOLYA_SKINS: { id: KolyaSkinId; name: string; desc: string; cost: n
   { id: "raincoat", name: "Дождевик", desc: "Любит дождь", cost: 120 },
   { id: "kalyan", name: "Закалённый", desc: "Кальян-стиль", cost: 200 },
   { id: "alien", name: "Чужой", desc: "Зелёный режим", cost: 280 },
-  { id: "toxic_glow", name: "Токсичный Коля", desc: "Самый дорогой — с фото", cost: 999, premium: true },
+  { id: "kolya1", name: "Коля Premium", desc: "Самый дорогой — kolya1", cost: 999, premium: true },
 ];
 
 export const SAB_SKINS: { id: SabSkinId; name: string; desc: string; cost: number }[] = [

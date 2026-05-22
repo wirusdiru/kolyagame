@@ -1,4 +1,5 @@
 import type { Boss, Enemy, FloatingText, Item, Projectile } from "./types";
+import type { PeerState } from "./onlineRoom";
 
 /** Снимок мира для canvas — обновляется в game loop без React */
 export interface WorldSnapshot {
@@ -24,6 +25,7 @@ export interface WorldSnapshot {
   sabSkin: import("./types").SabSkinId;
   sabBiting: boolean;
   biomeLabel: string;
+  onlinePeers: PeerState[];
 }
 
 export function emptyWorld(): WorldSnapshot {
@@ -33,5 +35,6 @@ export function emptyWorld(): WorldSnapshot {
     enemies: [], boss: null, projectiles: [], items: [], floatingTexts: [],
     isRaining: false, tick: 0, wave: 1,
     kolyaSkin: "default", sabSkin: "default", sabBiting: false, biomeLabel: "",
+    onlinePeers: [],
   };
 }

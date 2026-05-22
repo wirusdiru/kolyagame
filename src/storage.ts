@@ -72,18 +72,29 @@ function saveExtras(username: string, data: Partial<UserProfile>) {
   localStorage.setItem(EXTRAS_KEY, JSON.stringify(all));
 }
 
+function migrateSkins(profile: UserProfile): UserProfile {
+  const skins = profile.ownedKolyaSkins.map(s =>
+    (s as string) === "toxic_glow" ? "kolya1" : s,
+  );
+  const eq = profile.equippedKolyaSkin === ("toxic_glow" as KolyaSkinId)
+    ? "kolya1" as KolyaSkinId
+    : profile.equippedKolyaSkin;
+  return { ...profile, ownedKolyaSkins: skins, equippedKolyaSkin: eq };
+}
+
 function mergeExtras(profile: UserProfile): UserProfile {
   const ex = loadExtras()[profile.username.toLowerCase()];
-  if (!ex) return profile;
-  return {
-    ...profile,
-    abilities: { ...DEFAULT_ABILITIES, ...profile.abilities, ...ex.abilities },
-    ownedKolyaSkins: ex.ownedKolyaSkins ?? profile.ownedKolyaSkins,
-    ownedSabSkins: ex.ownedSabSkins ?? profile.ownedSabSkins,
-    equippedKolyaSkin: ex.equippedKolyaSkin ?? profile.equippedKolyaSkin,
-    equippedSabSkin: ex.equippedSabSkin ?? profile.equippedSabSkin,
-    friends: ex.friends ?? profile.friends,
-  };
+  const base = migrateSkins(profile);
+  if (!ex) return base;
+  return migrateSkins({
+    ...base,
+    abilities: { ...DEFAULT_ABILITIES, ...base.abilities, ...ex.abilities },
+    ownedKolyaSkins: ex.ownedKolyaSkins ?? base.ownedKolyaSkins,
+    ownedSabSkins: ex.ownedSabSkins ?? base.ownedSabSkins,
+    equippedKolyaSkin: ex.equippedKolyaSkin ?? base.equippedKolyaSkin,
+    equippedSabSkin: ex.equippedSabSkin ?? base.equippedSabSkin,
+    friends: ex.friends ?? base.friends,
+  });
 }
 
 function rowToProfile(row: Record<string, unknown>): UserProfile {

@@ -4,11 +4,11 @@ export const TILE_SIZE = 48;
 export const CHUNK_TILES = 16;
 export const CHUNK_PX = CHUNK_TILES * TILE_SIZE;
 
-/** Расширять мир, когда игрок ближе этого к краю загруженной области */
+/** Размер региона одного биома в тайлах (как «континенты» в Minecraft) */
+const BIOME_REGION_TILES = 56;
+
 const EXPAND_MARGIN_PX = 520;
-/** Сколько чанков добавить за один кадр при расширении */
 const EXPAND_RING = 2;
-/** Максимум чанков в памяти (старые не удаляются — только лимит на новые) */
 const MAX_CHUNKS = 900;
 
 export type TileGrid = TileType[][];
@@ -58,43 +58,57 @@ function fbm(tx: number, ty: number, seed: number, scale: number): number {
   return v / sum;
 }
 
-function pickBiome(temp: number, humid: number, elev: number): BiomeType {
-  if (elev > 0.72) return "mountain";
-  if (temp < 0.28) return "snow";
-  if (temp > 0.68 && humid < 0.38) return "desert";
-  if (humid > 0.62 && temp > 0.35 && temp < 0.62) return "swamp";
-  if (humid > 0.52 && elev < 0.55) return "forest";
+/** Биом только от крупной сетки — без «каши» блоков в одном месте */
+function getRegionBiome(worldTx: number, worldTy: number, seed: number): BiomeType {
+  const rx = Math.floor(worldTx / BIOME_REGION_TILES);
+  const ry = Math.floor(worldTy / BIOME_REGION_TILES);
+  const temp = fbm(rx, ry, seed, 0.55);
+  const humid = fbm(rx, ry, seed + 111, 0.55);
+  const elev = fbm(rx, ry, seed + 222, 0.45);
+
+  if (elev > 0.78) return "mountain";
+  if (temp < 0.22) return "snow";
+  if (temp > 0.72 && humid < 0.35) return "desert";
+  if (humid > 0.68 && temp > 0.38 && temp < 0.58) return "swamp";
+  if (humid > 0.5 && temp > 0.28 && temp < 0.65) return "forest";
   return "plains";
 }
 
-function baseTileForBiome(biome: BiomeType, detail: number, paths: number): TileType {
-  if (paths > 0.72 && detail < 0.45) return "path";
+function tileForBiome(biome: BiomeType, detail: number, paths: number): TileType {
+  if (paths > 0.74 && detail < 0.42 && biome !== "mountain" && biome !== "swamp") return "path";
+
   switch (biome) {
-    case "snow": return detail > 0.7 ? "rock" : "snow";
-    case "desert": return detail > 0.75 ? "rock" : "sand";
-    case "swamp": return detail < 0.12 ? "water" : detail < 0.2 ? "mud" : "grass";
-    case "mountain": return detail > 0.55 ? "rock" : elevGrass(detail);
-    case "forest": return detail > 0.65 ? "grass2" : "grass";
-    default: return detail > 0.6 ? "grass2" : "grass";
+    case "snow":
+      return detail > 0.88 ? "rock" : "snow";
+    case "desert":
+      return detail > 0.9 ? "bush" : "sand";
+    case "swamp":
+      if (detail < 0.1) return "water";
+      if (detail < 0.18) return "mud";
+      return detail > 0.75 ? "grass2" : "grass";
+    case "mountain":
+      if (detail > 0.82) return "rock";
+      return detail > 0.55 ? "grass2" : "grass";
+    case "forest":
+      return detail > 0.6 ? "grass2" : "grass";
+    default:
+      return detail > 0.65 ? "grass2" : "grass";
   }
 }
 
-function elevGrass(detail: number): TileType {
-  return detail > 0.5 ? "grass2" : "grass";
-}
-
-/** Редкие деревья — не стены: шум + соседи */
 function shouldPlaceTree(
-  worldTx: number,
-  worldTy: number,
   biome: BiomeType,
   detail: number,
+  worldTx: number,
+  worldTy: number,
   getType: (tx: number, ty: number) => TileType | null,
 ): boolean {
-  if (biome !== "forest" && biome !== "swamp" && biome !== "plains") return false;
-  if (detail < 0.88) return false;
-  const forestRoll = fbm(worldTx * 3.1, worldTy * 3.1, 9191, 0.15);
-  if (forestRoll < 0.62) return false;
+  if (biome !== "forest" && biome !== "plains") return false;
+  if (biome === "plains" && detail < 0.92) return false;
+  if (biome === "forest" && detail < 0.78) return false;
+
+  const cluster = fbm(worldTx * 2, worldTy * 2, 9191, 0.2);
+  if (cluster < 0.55) return false;
 
   for (let dy = -2; dy <= 2; dy++) {
     for (let dx = -2; dx <= 2; dx++) {
@@ -128,12 +142,11 @@ export class InfiniteWorld {
     this.clearSpawnPatch();
   }
 
-  /** Площадка старта без деревьев */
   private clearSpawnPatch() {
-    for (let ty = -4; ty <= 4; ty++) {
-      for (let tx = -4; tx <= 4; tx++) {
-        if (tx * tx + ty * ty < 20) {
-          this.setTileAt(tx, ty, tx * tx + ty * ty < 9 ? "path" : "grass");
+    for (let ty = -5; ty <= 5; ty++) {
+      for (let tx = -5; tx <= 5; tx++) {
+        if (tx * tx + ty * ty < 22) {
+          this.setTileAt(tx, ty, tx * tx + ty * ty < 10 ? "path" : "grass");
         }
       }
     }
@@ -157,13 +170,8 @@ export class InfiniteWorld {
       return existing ?? this.chunks.values().next().value!;
     }
 
+    const chunkBiome = getRegionBiome(cx * CHUNK_TILES + 8, cy * CHUNK_TILES + 8, this.seed);
     const grid: TileGrid = [];
-    const centerTx = cx * CHUNK_TILES + CHUNK_TILES / 2;
-    const centerTy = cy * CHUNK_TILES + CHUNK_TILES / 2;
-    const temp0 = fbm(centerTx, centerTy, this.seed, 0.004);
-    const humid0 = fbm(centerTx, centerTy, this.seed + 111, 0.004);
-    const elev0 = fbm(centerTx, centerTy, this.seed + 222, 0.008);
-    const biome = pickBiome(temp0, humid0, elev0);
 
     const getType = (wtx: number, wty: number): TileType | null => {
       const ccx = Math.floor(wtx / CHUNK_TILES);
@@ -180,23 +188,10 @@ export class InfiniteWorld {
       for (let lx = 0; lx < CHUNK_TILES; lx++) {
         const wtx = cx * CHUNK_TILES + lx;
         const wty = cy * CHUNK_TILES + ly;
-        const elev = fbm(wtx, wty, this.seed + 222, 0.02);
-        const humid = fbm(wtx, wty, this.seed + 111, 0.015);
-        const detail = fbm(wtx, wty, this.seed + 333, 0.05);
-        const paths = fbm(wtx, wty, this.seed + 444, 0.018);
-        const tileBiome = pickBiome(
-          fbm(wtx, wty, this.seed, 0.004),
-          humid,
-          elev,
-        );
-        let type = baseTileForBiome(tileBiome, detail, paths);
-
-        if (tileBiome === "mountain" && detail > 0.8 && elev > 0.65) type = "rock";
-        if (tileBiome === "swamp" && detail < 0.08) type = "water";
-        if (tileBiome === "desert" && detail > 0.82) type = "bush";
-        if (detail > 0.9 && tileBiome === "plains" && paths < 0.5) type = "bush";
-
-        grid[ly][lx] = type;
+        const biome = getRegionBiome(wtx, wty, this.seed);
+        const detail = fbm(wtx, wty, this.seed + 333, 0.06);
+        const paths = fbm(wtx, wty, this.seed + 444, 0.022);
+        grid[ly][lx] = tileForBiome(biome, detail, paths);
       }
     }
 
@@ -204,19 +199,15 @@ export class InfiniteWorld {
       for (let lx = 0; lx < CHUNK_TILES; lx++) {
         const wtx = cx * CHUNK_TILES + lx;
         const wty = cy * CHUNK_TILES + ly;
-        const detail = fbm(wtx, wty, this.seed + 333, 0.05);
-        const tileBiome = pickBiome(
-          fbm(wtx, wty, this.seed, 0.004),
-          fbm(wtx, wty, this.seed + 111, 0.015),
-          fbm(wtx, wty, this.seed + 222, 0.02),
-        );
-        if (shouldPlaceTree(wtx, wty, tileBiome, detail, getType)) {
+        const biome = getRegionBiome(wtx, wty, this.seed);
+        const detail = fbm(wtx, wty, this.seed + 333, 0.06);
+        if (shouldPlaceTree(biome, detail, wtx, wty, getType)) {
           grid[ly][lx] = "tree";
         }
       }
     }
 
-    const chunk: Chunk = { cx, cy, grid, biome };
+    const chunk: Chunk = { cx, cy, grid, biome: chunkBiome };
     this.chunks.set(key, chunk);
     this.minCx = Math.min(this.minCx, cx);
     this.maxCx = Math.max(this.maxCx, cx);
@@ -264,13 +255,9 @@ export class InfiniteWorld {
   getBiomeAt(wx: number, wy: number): BiomeType {
     const wtx = Math.floor(wx / TILE_SIZE);
     const wty = Math.floor(wy / TILE_SIZE);
-    const temp = fbm(wtx, wty, this.seed, 0.004);
-    const humid = fbm(wtx, wty, this.seed + 111, 0.004);
-    const elev = fbm(wtx, wty, this.seed + 222, 0.008);
-    return pickBiome(temp, humid, elev);
+    return getRegionBiome(wtx, wty, this.seed);
   }
 
-  /** Срез для миникарты / совместимости */
   getLegacyGrid(): TileGrid {
     const rows: TileGrid = [];
     for (let cy = this.minCy; cy <= this.maxCy; cy++) {
@@ -293,7 +280,6 @@ export class InfiniteWorld {
     return { x: TILE_SIZE * 0.5, y: TILE_SIZE * 0.5 };
   }
 
-  /** Тайлы в области камеры для отрисовки */
   tilesInView(camX: number, camY: number, vw: number, vh: number): { type: TileType; x: number; y: number; biome: BiomeType }[] {
     const out: { type: TileType; x: number; y: number; biome: BiomeType }[] = [];
     const tx0 = Math.floor((camX - vw / 2) / TILE_SIZE) - 1;
@@ -308,11 +294,12 @@ export class InfiniteWorld {
         this.generateChunk(cx, cy);
         const wx = tx * TILE_SIZE;
         const wy = ty * TILE_SIZE;
+        const biome = getRegionBiome(tx, ty, this.seed);
         out.push({
           type: this.getTile(wx + TILE_SIZE / 2, wy + TILE_SIZE / 2),
           x: wx,
           y: wy,
-          biome: this.getBiomeAt(wx, wy),
+          biome,
         });
       }
     }
@@ -362,7 +349,6 @@ export function findLandPosition(
   return { x: nearX, y: nearY };
 }
 
-/** @deprecated — для старых импортов */
 export const WORLD_W = 999999;
 export const WORLD_H = 999999;
 
@@ -378,10 +364,10 @@ export function generateMap(seed?: number): MapData {
   };
 }
 
-export function getTileFromGrid(_grid: TileGrid, wx: number, wy: number): TileType {
+export function getTileFromGrid(_grid: TileGrid, _wx: number, _wy: number): TileType {
   return "grass";
 }
 
-export function isWalkable(_grid: TileGrid, wx: number, wy: number): boolean {
+export function isWalkable(_grid: TileGrid, _wx: number, _wy: number): boolean {
   return true;
 }

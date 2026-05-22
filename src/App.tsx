@@ -21,6 +21,8 @@ import * as storage from "./storage";
 import GameCanvas from "./components/GameCanvas";
 import Boss3D from "./components/Boss3D";
 import { emptyWorld, type WorldSnapshot } from "./worldRef";
+import { getActiveRoom } from "./onlineRoom";
+import type { PeerState } from "./onlineRoom";
 import MenuScreen from "./screens/MenuScreen";
 import PauseOverlay from "./screens/PauseOverlay";
 import GameOverScreen from "./screens/GameOverScreen";
@@ -64,6 +66,8 @@ export default function App() {
   const regenStinkRef = useRef(0);
   const sabBiteTargetRef = useRef<number | null>(null);
   const sabBitingRef = useRef(false);
+  const onlinePeersRef = useRef<PeerState[]>([]);
+  const onlineSpawnIndexRef = useRef(0);
 
   const spawn = infiniteWorldRef.current.getSpawn();
   const [kx, setKx] = useState(spawn.x);
@@ -172,6 +176,7 @@ export default function App() {
       kolyaSkin: kolyaSkinRef.current,
       sabSkin: sabSkinRef.current,
       biomeLabel: BIOME_NAMES[biome] ?? biome,
+      onlinePeers: onlinePeersRef.current,
     };
   };
 
@@ -299,9 +304,9 @@ export default function App() {
     fireWaterShot(world.x, world.y);
   }, [gameState, screenW, addFloat]);
 
-  const startGame = async () => {
+  const startGame = async (forcedSeed?: number) => {
     resetIds();
-    const newSeed = Date.now() + Math.floor(Math.random() * 1_000_000);
+    const newSeed = forcedSeed ?? Date.now() + Math.floor(Math.random() * 1_000_000);
     infiniteWorldRef.current = new InfiniteWorld(newSeed);
     const up = await storage.getAppliedUpgrades();
     const ab = await storage.getOwnedAbilities();
@@ -323,7 +328,8 @@ export default function App() {
     regenStinkRef.current = applied.regenOnStink;
 
     const sp = infiniteWorldRef.current.getSpawn();
-    const cx = sp.x, cy = sp.y;
+    const off = onlineSpawnIndexRef.current * 72;
+    const cx = sp.x + off, cy = sp.y + (onlineSpawnIndexRef.current % 2) * 40;
 
     kxRef.current = cx; kyRef.current = cy;
     sabXRef.current = cx + 60; sabYRef.current = cy + 40;
@@ -529,6 +535,34 @@ export default function App() {
           }];
           sabAttackTimerRef.current = 40;
         }
+      }
+
+      // Враги слишком далеко — телепорт ближе к Коле
+      const CATCHUP_DIST = 720;
+      if (!bossActiveRef.current) {
+        const alive = enemiesRef.current.filter(en => en.hp > 0);
+        if (alive.length > 0 && alive.every(en => dist(en.x, en.y, kxRef.current, kyRef.current) > CATCHUP_DIST)) {
+          enemiesRef.current = alive.map((en, i) => {
+            const pos = findLandPosition(infiniteWorldRef.current, kxRef.current, kyRef.current, 260, 420);
+            return { ...en, x: pos.x + (i % 4) * 35, y: pos.y + Math.floor(i / 4) * 35 };
+          });
+          addFloat(kxRef.current, kyRef.current - 55, "Враги догнали!", "#fd0");
+        }
+        if (
+          waveEnemiesKilledRef.current < waveTargetRef.current &&
+          alive.length === 0 &&
+          enemiesPerWaveRef.current < waveTargetRef.current &&
+          tk % 90 === 0
+        ) {
+          enemiesPerWaveRef.current += 1;
+          enemiesRef.current = [...enemiesRef.current, spawnEnemy(st.wave, kxRef.current, kyRef.current, infiniteWorldRef.current)];
+        }
+      }
+
+      const room = getActiveRoom();
+      if (room && tk % 10 === 0) {
+        room.sendPosition(kxRef.current, kyRef.current, kolyaHpRef.current, kolyaMaxHpRef.current, tk);
+        onlinePeersRef.current = room.getOtherPeers();
       }
 
       // Spawn
@@ -859,7 +893,11 @@ export default function App() {
   if (gameState === "menu") {
     return (
       <MenuScreen
-        onStart={startGame}
+        onStartSolo={() => startGame()}
+        onStartOnline={(seed, spawnIdx) => {
+          onlineSpawnIndexRef.current = spawnIdx;
+          startGame(seed);
+        }}
         user={user}
         serverOnline={storage.isServerMode()}
         onAuthChange={refreshUser}
@@ -867,7 +905,13 @@ export default function App() {
     );
   }
   if (gameState === "gameover") {
-    return <GameOverScreen stats={stats} onRestart={startGame} onMenu={() => setGameState("menu")} />;
+    return (
+      <GameOverScreen
+        stats={stats}
+        onRestart={() => startGame()}
+        onMenu={() => { void import("./onlineRoom").then(m => m.OnlineRoom.leave()); setGameState("menu"); }}
+      />
+    );
   }
 
   const hpPct = (kolyaHp / kolyaMaxHp) * 100;

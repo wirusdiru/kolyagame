@@ -23,6 +23,48 @@ body {
 
 .menu-hint { text-align: center; color: #666; font-size: 11px; margin-top: 8px; }
 
+.play-mode-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.play-mode-tabs button {
+  flex: 1;
+  padding: 10px;
+  border-radius: 8px;
+  border: 2px solid #444;
+  background: transparent;
+  color: #888;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 12px;
+}
+.play-mode-tabs button.active {
+  border-color: #ff6b35;
+  color: #ff6b35;
+  background: rgba(255, 107, 53, 0.15);
+}
+
+.online-panel { margin-top: 8px; }
+.room-code {
+  text-align: center;
+  font-size: 22px;
+  color: #fd0;
+  margin: 12px 0;
+  letter-spacing: 4px;
+}
+.room-members {
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  color: #ccc;
+  font-size: 13px;
+}
+.room-members ul { list-style: none; margin-top: 6px; }
+.room-members li { padding: 4px 0; color: #afa; }
+.online-note { margin-top: 10px; font-size: 10px; color: #555; }
+
 .shop-section-tabs {
   display: flex;
   gap: 8px;

@@ -142,7 +142,7 @@ export interface OwnedAbilities {
   vyaly_bait: boolean;
 }
 
-export type KolyaSkinId = "default" | "alien" | "raincoat" | "kalyan" | "toxic_glow";
+export type KolyaSkinId = "default" | "alien" | "raincoat" | "kalyan" | "kolya1";
 export type SabSkinId = "default" | "pug" | "husky" | "cyber" | "golden";
 
 export interface FriendEntry {

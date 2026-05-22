@@ -1,22 +1,29 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { AbilityId, KolyaSkinId, LeaderboardEntry, SabSkinId, ShopUpgradeId, UserProfile } from "../types";
 import {
   SHOP_ITEMS, ABILITY_SHOP, KOLYA_SKINS, SAB_SKINS,
 } from "../constants";
 import * as storage from "../storage";
-import { createRoomCode, joinCoopChannel } from "../coop";
+import { OnlineRoom, type RoomMember } from "../onlineRoom";
+import { isCloudEnabled } from "../supabaseClient";
 
 type Tab = "play" | "leaderboard" | "shop" | "skins" | "friends" | "auth";
+type PlayMode = "solo" | "host" | "join";
 
 interface MenuScreenProps {
-  onStart: () => void;
+  onStartSolo: () => void;
+  onStartOnline: (seed: number, spawnIndex: number) => void;
   user: UserProfile | null;
   serverOnline: boolean;
   onAuthChange: () => void;
 }
 
-export default function MenuScreen({ onStart, user, serverOnline, onAuthChange }: MenuScreenProps) {
+export default function MenuScreen({ onStartSolo, onStartOnline, user, serverOnline, onAuthChange }: MenuScreenProps) {
   const [tab, setTab] = useState<Tab>("play");
+  const [playMode, setPlayMode] = useState<PlayMode>("solo");
+  const [room, setRoom] = useState<OnlineRoom | null>(null);
+  const [members, setMembers] = useState<RoomMember[]>([]);
+  const [onlineMsg, setOnlineMsg] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [authError, setAuthError] = useState("");
@@ -27,7 +34,22 @@ export default function MenuScreen({ onStart, user, serverOnline, onAuthChange }
   const [friendInput, setFriendInput] = useState("");
   const [friendMsg, setFriendMsg] = useState("");
   const [roomCode, setRoomCode] = useState("");
-  const [coopMsg, setCoopMsg] = useState("");
+
+  useEffect(() => {
+    return () => { void OnlineRoom.leave(); };
+  }, []);
+
+  useEffect(() => {
+    if (!room) return;
+    const unsubRoom = room.onRoomChange(snap => {
+      setMembers(snap.members.map(u => ({ username: u, isHost: u === snap.host })));
+    });
+    const unsubStart = room.onGameStart(seed => {
+      const idx = room.members.findIndex(m => m.username === user?.username);
+      onStartOnline(seed, Math.max(0, idx));
+    });
+    return () => { unsubRoom(); unsubStart(); };
+  }, [room, user, onStartOnline]);
 
   const loadLb = async () => {
     setLoading(true);
@@ -92,17 +114,43 @@ export default function MenuScreen({ onStart, user, serverOnline, onAuthChange }
     else setFriendMsg(res.error ?? "Ошибка");
   };
 
-  const createCoopRoom = () => {
-    const code = createRoomCode();
-    setRoomCode(code);
-    setCoopMsg(`Комната ${code} — отправь другу. ${serverOnline ? "Онлайн через Supabase." : "Локально: друг вводит код в своём браузере."}`);
+  const createHostRoom = async () => {
+    if (!user) { setOnlineMsg("Сначала войди в аккаунт"); return; }
+    setLoading(true);
+    await OnlineRoom.leave();
+    const r = await OnlineRoom.createHost(user.username);
+    setRoom(r);
+    setRoomCode(r.code);
+    setMembers(r.members);
+    setOnlineMsg(`Группа создана! Код: ${r.code}`);
+    setLoading(false);
   };
 
-  const joinCoopRoom = async () => {
-    if (!roomCode || !user) return;
-    const ch = await joinCoopChannel(roomCode, user.username, () => {});
-    if (ch) setCoopMsg("Подключено! Запусти игру — друг увидит тебя (бета).");
-    else setCoopMsg("Кооп: войди в аккаунт и настрой Supabase, или играй соло.");
+  const joinGroup = async () => {
+    if (!user) { setOnlineMsg("Сначала войди в аккаунт"); return; }
+    if (!roomCode.trim()) { setOnlineMsg("Введи код группы"); return; }
+    setLoading(true);
+    const r = await OnlineRoom.join(user.username, roomCode.trim());
+    setLoading(false);
+    if (!r) {
+      setOnlineMsg("Группа не найдена. Хост должен создать её первым (или открой 2 вкладки на одном ПК).");
+      return;
+    }
+    setRoom(r);
+    setMembers(r.members);
+    setOnlineMsg(r.isHost ? "Ты в своей группе" : `В группе. Жди старт от хоста ${r.code}`);
+  };
+
+  const leaveGroup = async () => {
+    await OnlineRoom.leave();
+    setRoom(null);
+    setMembers([]);
+    setOnlineMsg("");
+  };
+
+  const hostPlay = () => {
+    if (!room?.isHost) return;
+    room.hostStartGame();
   };
 
   const tabStyle = (t: Tab) => ({
@@ -148,10 +196,68 @@ export default function MenuScreen({ onStart, user, serverOnline, onAuthChange }
 
         {tab === "play" && (
           <div className="menu-play">
-            <button type="button" className="menu-play-btn" onClick={onStart} disabled={loading}>
-              ИГРАТЬ ЗА КОЛЮ
-            </button>
-            <p className="menu-hint">Бесконечный мир · биомы · только вода (F)</p>
+            <div className="play-mode-tabs">
+              <button type="button" className={playMode === "solo" ? "active" : ""} onClick={() => { setPlayMode("solo"); void leaveGroup(); }}>Соло</button>
+              <button type="button" className={playMode === "host" ? "active" : ""} onClick={() => setPlayMode("host")}>Хост</button>
+              <button type="button" className={playMode === "join" ? "active" : ""} onClick={() => setPlayMode("join")}>В группу</button>
+            </div>
+
+            {playMode === "solo" && (
+              <>
+                <button type="button" className="menu-play-btn" onClick={onStartSolo} disabled={loading}>
+                  ИГРАТЬ ЗА КОЛЮ
+                </button>
+                <p className="menu-hint">Бесконечный мир · отдельные биомы · вода (F)</p>
+              </>
+            )}
+
+            {(playMode === "host" || playMode === "join") && (
+              <div className="online-panel">
+                {!user && <p className="menu-empty">Войди в аккаунт для онлайна</p>}
+                {user && playMode === "host" && !room && (
+                  <button type="button" className="menu-play-btn" onClick={createHostRoom} disabled={loading}>
+                    СОЗДАТЬ ГРУППУ
+                  </button>
+                )}
+                {user && playMode === "join" && !room && (
+                  <>
+                    <input className="auth-input" placeholder="Код группы (6 цифр)" value={roomCode} onChange={e => setRoomCode(e.target.value)} />
+                    <button type="button" className="shop-buy-btn" style={{ width: "100%", marginTop: 8 }} onClick={joinGroup} disabled={loading}>
+                      ПРИСОЕДИНИТЬСЯ
+                    </button>
+                  </>
+                )}
+                {room && (
+                  <>
+                    <div className="room-code">Код: <b>{room.code}</b></div>
+                    <div className="room-members">
+                      <b>В группе:</b>
+                      <ul>
+                        {members.map(m => (
+                          <li key={m.username}>
+                            {m.username} {m.isHost ? " (хост)" : ""}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    {room.isHost ? (
+                      <button type="button" className="menu-play-btn" onClick={hostPlay} disabled={loading || members.length < 1}>
+                        ИГРАТЬ — СТАРТ ДЛЯ ВСЕХ
+                      </button>
+                    ) : (
+                      <p className="menu-hint">Жди, пока хост нажмёт «Играть»…</p>
+                    )}
+                    <button type="button" className="auth-logout" onClick={leaveGroup}>Покинуть группу</button>
+                  </>
+                )}
+                {onlineMsg && <p className="coop-msg">{onlineMsg}</p>}
+                <p className="menu-hint online-note">
+                  {isCloudEnabled
+                    ? "Разные ПК: нужен Supabase в .env (см. DEPLOY.md)"
+                    : "Без Supabase: 2 вкладки на одном ПК с одним кодом"}
+                </p>
+              </div>
+            )}
           </div>
         )}
 
@@ -302,13 +408,7 @@ export default function MenuScreen({ onStart, user, serverOnline, onAuthChange }
                     </li>
                   ))}
                 </ul>
-                <div className="coop-box">
-                  <h4>Игра с другом (бета)</h4>
-                  <button type="button" className="shop-buy-btn" onClick={createCoopRoom}>Создать комнату</button>
-                  <input className="auth-input" placeholder="Код комнаты" value={roomCode} onChange={e => setRoomCode(e.target.value)} />
-                  <button type="button" className="shop-buy-btn" onClick={joinCoopRoom}>Войти в комнату</button>
-                  {coopMsg && <p className="coop-msg">{coopMsg}</p>}
-                </div>
+                <p className="menu-hint">Онлайн-игра — во вкладке «Игра» → Хост / В группу</p>
               </>
             )}
           </div>
