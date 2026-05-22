@@ -22,7 +22,10 @@ function getAvailableEnemies(wave: number): Enemy["type"][] {
   return ALL_ENEMY_TYPES;
 }
 
-export function spawnEnemy(wave: number, playerX: number, playerY: number, world: InfiniteWorld): Enemy {
+export function spawnEnemy(
+  wave: number, playerX: number, playerY: number, world: InfiniteWorld, partySize = 1,
+): Enemy {
+  const partyMult = 1 + (partySize - 1) * 0.55;
   const available = getAvailableEnemies(wave);
   const type = available[Math.floor(Math.random() * available.length)];
   const pos = findLandPosition(world, playerX, playerY, 320, 520);
@@ -55,10 +58,11 @@ export function spawnEnemy(wave: number, playerX: number, playerY: number, world
     rain_drop: 2.95 + wave * 0.13,
     kalyan_spirit: 1.45 + wave * 0.08,
   };
-  const hp = hpMap[type];
+  const hp = Math.floor(hpMap[type] * partyMult);
+  const spd = speedMap[type] * (1 + (partySize - 1) * 0.08);
   return {
     id: nextId(), x, y, hp, maxHp: hp,
-    type, speed: speedMap[type],
+    type, speed: spd,
     vx: 0, vy: 0, angle: 0, attackTimer: 0, stun: 0, phase: Math.random() * Math.PI * 2,
   };
 }
@@ -99,8 +103,9 @@ export function spawnItem(x: number, y: number, forceType?: ItemType): Item {
 
 export { isBossWave };
 
-export function getWaveTarget(wave: number): number {
-  return 12 + wave * 4 + Math.floor(wave / 5) * 6;
+export function getWaveTarget(wave: number, partySize = 1): number {
+  const base = 12 + wave * 4 + Math.floor(wave / 5) * 6;
+  return Math.floor(base * (1 + (partySize - 1) * 0.35));
 }
 
 export function getEnemyPoints(type: Enemy["type"]): number {
@@ -132,8 +137,8 @@ export function applyUpgrades(
 ) {
   const alienDurBonus = Math.min(0.2, up.alienDuration * 0.05 + (abilities?.traffic_steal ? 0.08 : 0));
   return {
-    maxHp: base.maxHp + up.maxHp * 12,
-    waterCap: base.waterCap + up.waterCap * 8,
+    maxHp: base.maxHp + up.maxHp * 10,
+    waterCap: base.waterCap + up.waterCap * 12,
     speed: base.speed * (1 + up.speed * 0.04),
     stinkDmg: 5 + up.stinkPower * 2,
     alienCd: Math.max(240, Math.floor(600 * (1 - up.alienCdReduce * 0.06))),

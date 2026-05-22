@@ -26,6 +26,7 @@ export interface WorldSnapshot {
   sabBiting: boolean;
   biomeLabel: string;
   onlinePeers: PeerState[];
+  isLocalDead: boolean;
 }
 
 export function emptyWorld(): WorldSnapshot {
@@ -36,5 +37,6 @@ export function emptyWorld(): WorldSnapshot {
     isRaining: false, tick: 0, wave: 1,
     kolyaSkin: "default", sabSkin: "default", sabBiting: false, biomeLabel: "",
     onlinePeers: [],
+    isLocalDead: false,
   };
 }

@@ -15,6 +15,8 @@ export interface PeerState {
   hp: number;
   maxHp: number;
   tick: number;
+  isDead?: boolean;
+  skinId?: string;
 }
 
 export interface RoomSnapshot {
@@ -28,7 +30,13 @@ export interface RoomSnapshot {
 }
 
 type RoomListener = (room: RoomSnapshot) => void;
-type StartListener = (seed: number) => void;
+export interface GameStartPayload {
+  seed: number;
+  spawnX: number;
+  spawnY: number;
+}
+
+type StartListener = (payload: GameStartPayload) => void;
 
 const LS_PREFIX = "kolya_online_room_";
 const POLL_MS = 400;
@@ -58,6 +66,12 @@ function writeRoom(room: RoomSnapshot) {
 }
 
 let activeRoom: OnlineRoom | null = null;
+
+let onRevivedListener: (() => void) | null = null;
+
+export function setOnRevivedListener(cb: (() => void) | null) {
+  onRevivedListener = cb;
+}
 
 export function getActiveRoom(): OnlineRoom | null {
   return activeRoom;
@@ -156,7 +170,11 @@ export class OnlineRoom {
   onGameStart(cb: StartListener) {
     this.startListeners.add(cb);
     if (this.snapshot.started && this.snapshot.seed != null) {
-      cb(this.snapshot.seed);
+      cb({
+        seed: this.snapshot.seed,
+        spawnX: (this.snapshot as RoomSnapshot & { spawnX?: number }).spawnX ?? 24,
+        spawnY: (this.snapshot as RoomSnapshot & { spawnY?: number }).spawnY ?? 24,
+      });
     }
     return () => this.startListeners.delete(cb);
   }
@@ -167,10 +185,15 @@ export class OnlineRoom {
     }
   }
 
-  private emitStart(seed: number) {
+  private emitStart(seed: number, spawnX?: number, spawnY?: number) {
     if (this.gameStarted) return;
     this.gameStarted = true;
-    for (const cb of this.startListeners) cb(seed);
+    const payload: GameStartPayload = {
+      seed,
+      spawnX: spawnX ?? 24,
+      spawnY: spawnY ?? 24,
+    };
+    for (const cb of this.startListeners) cb(payload);
   }
 
   private async pushState() {
@@ -196,19 +219,26 @@ export class OnlineRoom {
     writeRoom(this.snapshot);
     this.emitRoom();
     if (!wasStarted && this.snapshot.started && this.snapshot.seed != null) {
-      this.emitStart(this.snapshot.seed);
+      const s = remote as RoomSnapshot & { spawnX?: number; spawnY?: number };
+      this.emitStart(this.snapshot.seed, s.spawnX, s.spawnY);
     }
   }
 
-  private applyRemote(data: Partial<RoomSnapshot> & { type?: string; seed?: number; from?: string }) {
+  private applyRemote(data: Partial<RoomSnapshot> & { type?: string; seed?: number; from?: string; target?: string; spawnX?: number; spawnY?: number }) {
     if (this.closed) return;
+
+    if (data.type === "revive" && data.target === this.username) {
+      onRevivedListener?.();
+      return;
+    }
 
     if (data.type === "game_start" && data.seed != null) {
       this.snapshot.started = true;
       this.snapshot.seed = data.seed;
+      Object.assign(this.snapshot, { spawnX: data.spawnX, spawnY: data.spawnY });
       void this.pushState();
       this.emitRoom();
-      this.emitStart(data.seed);
+      this.emitStart(data.seed, data.spawnX, data.spawnY);
       return;
     }
 
@@ -240,8 +270,13 @@ export class OnlineRoom {
     void this.pushState();
     this.emitRoom();
     if (this.snapshot.started && this.snapshot.seed != null) {
-      this.emitStart(this.snapshot.seed);
+      const s = this.snapshot as RoomSnapshot & { spawnX?: number; spawnY?: number };
+      this.emitStart(this.snapshot.seed, s.spawnX, s.spawnY);
     }
+  }
+
+  sendRevive(targetUsername: string) {
+    this.broadcast({ type: "revive", target: targetUsername, from: this.username });
   }
 
   private broadcast(payload: Record<string, unknown>) {
@@ -292,7 +327,7 @@ export class OnlineRoom {
 
     channel.on("broadcast", { event: "room" }, ({ payload }: { payload: Record<string, unknown> }) => {
       const p = payload as Partial<RoomSnapshot> & { type?: string; from?: string };
-      if (p.type === "game_start" || p.type === "join") {
+      if (p.type === "game_start" || p.type === "join" || p.type === "revive") {
         this.applyRemote(p);
         return;
       }
@@ -415,24 +450,35 @@ export class OnlineRoom {
     this.startListeners.clear();
   }
 
-  hostStartGame(): number {
+  hostStartGame(spawnX: number, spawnY: number): number {
     if (!this.isHost) return 0;
     const seed = Date.now() + Math.floor(Math.random() * 1_000_000);
     this.snapshot.started = true;
     this.snapshot.seed = seed;
+    Object.assign(this.snapshot, { spawnX, spawnY });
     void this.pushState();
-    this.broadcast({ type: "game_start", seed, started: true, members: this.snapshot.members, host: this.snapshot.host });
+    this.broadcast({
+      type: "game_start", seed, spawnX, spawnY,
+      started: true, members: this.snapshot.members, host: this.snapshot.host,
+    });
     this.emitRoom();
-    this.emitStart(seed);
+    this.emitStart(seed, spawnX, spawnY);
     return seed;
   }
 
-  sendPosition(x: number, y: number, hp: number, maxHp: number, tick: number) {
-    const peer: PeerState = { username: this.username, x, y, hp, maxHp, tick };
+  sendPosition(
+    x: number, y: number, hp: number, maxHp: number, tick: number,
+    isDead = false, skinId?: string,
+  ) {
+    const peer: PeerState = { username: this.username, x, y, hp, maxHp, tick, isDead, skinId };
     this.snapshot.peers[this.username] = peer;
-    if (tick % 8 === 0) {
+    if (tick % 4 === 0) {
       this.broadcast({ type: "peer", peers: { [this.username]: peer } });
     }
+  }
+
+  getPartySize(): number {
+    return Math.max(1, this.snapshot.members.length);
   }
 
   getOtherPeers(): PeerState[] {

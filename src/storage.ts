@@ -406,7 +406,14 @@ export async function recordGameEnd(score: number, wave: number, coinsEarned: nu
 
 function addLeaderboardEntryLocal(username: string, score: number, wave: number) {
   const entries = getLeaderboardLocal();
-  entries.push({ username, score, wave, date: new Date().toISOString() });
+  const key = username.toLowerCase();
+  const existing = entries.findIndex(e => e.username.toLowerCase() === key);
+  const entry = { username, score, wave, date: new Date().toISOString() };
+  if (existing >= 0) {
+    if (score > entries[existing].score) entries[existing] = entry;
+  } else {
+    entries.push(entry);
+  }
   entries.sort((a, b) => b.score - a.score);
   localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(entries.slice(0, 50)));
 }

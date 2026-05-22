@@ -4,6 +4,27 @@ import type {
 } from "./types";
 import { TILE_SIZE } from "./mapGenerator";
 
+const baseUrl = import.meta.env.BASE_URL || "/";
+
+const kolya1Img = new Image();
+let kolya1Ready = false;
+(() => {
+  const paths = [
+    `${baseUrl}skins/kolya1.png`,
+    `${baseUrl}skins/kolya_toxic_glow.png`,
+    "/skins/kolya1.png",
+    "/skins/kolya_toxic_glow.png",
+  ];
+  let i = 0;
+  const next = () => {
+    if (i >= paths.length) return;
+    kolya1Img.src = paths[i++];
+  };
+  kolya1Img.onerror = next;
+  kolya1Img.onload = () => { kolya1Ready = true; };
+  next();
+})();
+
 const TILE_COLORS: Record<TileType, [string, string]> = {
   grass: ["#2d5a27", "#3d7a35"],
   grass2: ["#3a6b32", "#4a8a42"],
@@ -52,6 +73,10 @@ function drawSkinOverlay(ctx: CanvasRenderingContext2D, skinId: KolyaSkinId, tic
       ctx.stroke();
       break;
     case "kolya1":
+      ctx.fillStyle = `rgba(60,255,80,${0.15 + Math.sin(tick * 0.12) * 0.1})`;
+      ctx.beginPath();
+      ctx.arc(0, -8, 38, 0, Math.PI * 2);
+      ctx.fill();
       ctx.fillStyle = "#33cc33";
       ctx.fillRect(-14, -18, 28, 28);
       ctx.strokeStyle = `rgba(80,255,80,${0.6 + Math.sin(tick * 0.2) * 0.3})`;
@@ -145,6 +170,42 @@ export function drawKolya(
   const bob = pullup ? Math.sin(tick * 0.5) * 12 : Math.sin(tick * 0.08) * 3;
   ctx.save();
   ctx.translate(x, y + bob);
+
+  if (!isAlien && skinId === "kolya1" && !kolya1Ready) {
+    const pulse = 1 + Math.sin(tick * 0.12) * 0.04;
+    ctx.fillStyle = "#1a5a22";
+    ctx.fillRect(-16 * pulse, -8, 32 * pulse, 36 * pulse);
+    ctx.fillStyle = "#55ee66";
+    ctx.beginPath();
+    ctx.arc(0, -38, 18 * pulse, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#111";
+    ctx.fillRect(-14, -42, 12, 8);
+    ctx.fillRect(2, -42, 12, 8);
+    ctx.strokeStyle = "#88ff88";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(-18 * pulse, -12, 36 * pulse, 40 * pulse);
+    ctx.fillStyle = "#4488ff";
+    ctx.fillRect(16, 4, 12, 16);
+    ctx.restore();
+    return;
+  }
+
+  if (!isAlien && skinId === "kolya1" && kolya1Ready) {
+    const pulse = 1 + Math.sin(tick * 0.1) * 0.03;
+    const w = 78 * pulse;
+    const h = 104 * pulse;
+    ctx.shadowColor = "#55ff55";
+    ctx.shadowBlur = 16 + Math.sin(tick * 0.15) * 6;
+    ctx.drawImage(kolya1Img, -w / 2, -h + 22, w, h);
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "rgba(80,255,80,0.35)";
+    ctx.beginPath();
+    ctx.ellipse(0, 10, 28, 12, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
 
   ctx.fillStyle = "rgba(0,0,0,0.25)";
   ctx.beginPath();
@@ -366,11 +427,19 @@ export function drawOnlinePlayer(
   y: number,
   tick: number,
   username: string,
+  skinId: KolyaSkinId = "default",
+  isDead = false,
 ) {
   ctx.save();
-  ctx.translate(x, y + Math.sin(tick * 0.1) * 2);
-  ctx.globalAlpha = 0.92;
-  drawKolya(ctx, 0, 0, tick, false, false, "default");
+  ctx.translate(x, y + (isDead ? 0 : Math.sin(tick * 0.1) * 2));
+  ctx.globalAlpha = isDead ? 0.45 : 0.92;
+  if (isDead) {
+    ctx.fillStyle = "rgba(100,200,255,0.25)";
+    ctx.beginPath();
+    ctx.ellipse(0, 8, 26, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  drawKolya(ctx, 0, 0, tick, false, false, skinId);
   ctx.globalAlpha = 1;
   ctx.font = "bold 10px Consolas, monospace";
   ctx.textAlign = "center";

@@ -69,12 +69,44 @@ export default function GameCanvas({
       for (const proj of w.projectiles) drawProjectile(ctx, proj);
       if (w.stinkActive) drawStinkAura(ctx, w.kx, w.ky, w.stinkRadius, tick);
       for (const peer of w.onlinePeers) {
-        drawOnlinePlayer(ctx, peer.x, peer.y, tick, peer.username);
+        const sk = (peer.skinId as import("../types").KolyaSkinId) ?? "default";
+        drawOnlinePlayer(ctx, peer.x, peer.y, tick, peer.username, sk, peer.isDead);
       }
       if (w.sabHp > 0) {
         drawSabchak(ctx, w.sabX, w.sabY, tick, w.sabAttacking, w.sabBiting, w.sabSkin);
       }
-      drawKolya(ctx, w.kx, w.ky, tick, w.isAlien, w.pullupAnim, w.kolyaSkin);
+      if (!w.isLocalDead) {
+        drawKolya(ctx, w.kx, w.ky, tick, w.isAlien, w.pullupAnim, w.kolyaSkin);
+      } else {
+        ctx.save();
+        ctx.globalAlpha = 0.5;
+        drawKolya(ctx, w.kx, w.ky, tick, false, false, w.kolyaSkin);
+        ctx.restore();
+        ctx.font = "bold 12px Consolas, monospace";
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#f88";
+        ctx.fillText("УПАЛ — жди R от друга", w.kx, w.ky - 70);
+      }
+      for (const peer of w.onlinePeers) {
+        if (peer.isDead) continue;
+        const dx = peer.x - w.kx, dy = peer.y - w.ky;
+        const d = Math.sqrt(dx * dx + dy * dy) || 1;
+        if (d > 120 && d < 2000) {
+          const ax = w.kx + (dx / d) * 90;
+          const ay = w.ky + (dy / d) * 90;
+          ctx.save();
+          ctx.translate(ax, ay);
+          ctx.rotate(Math.atan2(dy, dx) + Math.PI / 2);
+          ctx.fillStyle = "#6cf";
+          ctx.beginPath();
+          ctx.moveTo(0, -14);
+          ctx.lineTo(-8, 6);
+          ctx.lineTo(8, 6);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+        }
+      }
       drawFloatingTexts(ctx, w.floatingTexts);
 
       ctx.restore();

@@ -4,7 +4,7 @@ import {
   SHOP_ITEMS, ABILITY_SHOP, KOLYA_SKINS, SAB_SKINS,
 } from "../constants";
 import * as storage from "../storage";
-import { OnlineRoom, type RoomMember } from "../onlineRoom";
+import { OnlineRoom, type GameStartPayload, type RoomMember } from "../onlineRoom";
 import { isCloudEnabled } from "../supabaseClient";
 
 type Tab = "play" | "leaderboard" | "shop" | "skins" | "friends" | "auth";
@@ -12,7 +12,7 @@ type PlayMode = "solo" | "host" | "join";
 
 interface MenuScreenProps {
   onStartSolo: () => void;
-  onStartOnline: (seed: number, spawnIndex: number) => void;
+  onStartOnline: (payload: GameStartPayload, spawnIndex: number) => void;
   user: UserProfile | null;
   serverOnline: boolean;
   onAuthChange: () => void;
@@ -44,9 +44,9 @@ export default function MenuScreen({ onStartSolo, onStartOnline, user, serverOnl
     const unsubRoom = room.onRoomChange(snap => {
       setMembers(snap.members.map(u => ({ username: u, isHost: u === snap.host })));
     });
-    const unsubStart = room.onGameStart(seed => {
+    const unsubStart = room.onGameStart(payload => {
       const idx = room.members.findIndex(m => m.username === user?.username);
-      onStartOnline(seed, Math.max(0, idx));
+      onStartOnline(payload, Math.max(0, idx));
     });
     return () => { unsubRoom(); unsubStart(); };
   }, [room, user, onStartOnline]);
@@ -150,7 +150,8 @@ export default function MenuScreen({ onStartSolo, onStartOnline, user, serverOnl
 
   const hostPlay = () => {
     if (!room?.isHost) return;
-    room.hostStartGame();
+    const sp = { x: 24, y: 24 };
+    room.hostStartGame(sp.x, sp.y);
   };
 
   const tabStyle = (t: Tab) => ({

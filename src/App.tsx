@@ -5,7 +5,7 @@ import type {
 } from "./types";
 import {
   KOLAY_NICKNAMES, STINK_MESSAGES, INTERNET_MESSAGES,
-  SABCHAK_PHRASES, POCKET_STUFF, BOSS_NAMES, BIOME_NAMES,
+  SABCHAK_PHRASES, POCKET_STUFF, BOSS_NAMES, BIOME_NAMES, WORLD_EVENTS,
 } from "./constants";
 import { playSfx } from "./audio";
 import {
@@ -21,8 +21,9 @@ import * as storage from "./storage";
 import GameCanvas from "./components/GameCanvas";
 import Boss3D from "./components/Boss3D";
 import { emptyWorld, type WorldSnapshot } from "./worldRef";
-import { getActiveRoom } from "./onlineRoom";
-import type { PeerState } from "./onlineRoom";
+import { getActiveRoom, setOnRevivedListener } from "./onlineRoom";
+import type { GameStartPayload, PeerState } from "./onlineRoom";
+import Minimap from "./components/Minimap";
 import MenuScreen from "./screens/MenuScreen";
 import PauseOverlay from "./screens/PauseOverlay";
 import GameOverScreen from "./screens/GameOverScreen";
@@ -68,6 +69,10 @@ export default function App() {
   const sabBitingRef = useRef(false);
   const onlinePeersRef = useRef<PeerState[]>([]);
   const onlineSpawnIndexRef = useRef(0);
+  const isDeadRef = useRef(false);
+  const pullupCdRef = useRef(0);
+  const reviveCdRef = useRef(0);
+  const [reviveHint, setReviveHint] = useState("");
 
   const spawn = infiniteWorldRef.current.getSpawn();
   const [kx, setKx] = useState(spawn.x);
@@ -177,6 +182,7 @@ export default function App() {
       sabSkin: sabSkinRef.current,
       biomeLabel: BIOME_NAMES[biome] ?? biome,
       onlinePeers: onlinePeersRef.current,
+      isLocalDead: isDeadRef.current,
     };
   };
 
@@ -205,6 +211,18 @@ export default function App() {
       createFloatingText(x, y, text, color, stack),
     ];
   }, []);
+
+  useEffect(() => {
+    setOnRevivedListener(() => {
+      isDeadRef.current = false;
+      kolyaHpRef.current = Math.floor(kolyaMaxHpRef.current * 0.45);
+      invincibleRef.current = 90;
+      setReviveHint("");
+      addFloat(kxRef.current, kyRef.current - 50, "ВОСКРЕШЁН!", "#6f6");
+      playSfx("refill");
+    });
+    return () => setOnRevivedListener(null);
+  }, [addFloat]);
 
   const addToInventory = (type: ItemType) => {
     const inv = [...inventoryRef.current];
@@ -298,15 +316,21 @@ export default function App() {
   };
 
   const handleClick = useCallback((e: React.MouseEvent) => {
-    if (gameState !== "playing") return;
+    if (gameState !== "playing" || isDeadRef.current) return;
     if (waterRef.current < waterPerShotRef.current) return;
     const world = screenToWorld(e.clientX, e.clientY);
     fireWaterShot(world.x, world.y);
   }, [gameState, screenW, addFloat]);
 
-  const startGame = async (forcedSeed?: number) => {
+  type StartOpts = { seed?: number; spawnX?: number; spawnY?: number; memberIdx?: number };
+
+  const startGame = async (opts?: number | StartOpts) => {
+    const o: StartOpts = typeof opts === "number" ? { seed: opts } : (opts ?? {});
+    isDeadRef.current = false;
+    setReviveHint("");
+    pullupCdRef.current = 0;
     resetIds();
-    const newSeed = forcedSeed ?? Date.now() + Math.floor(Math.random() * 1_000_000);
+    const newSeed = o.seed ?? Date.now() + Math.floor(Math.random() * 1_000_000);
     infiniteWorldRef.current = new InfiniteWorld(newSeed);
     const up = await storage.getAppliedUpgrades();
     const ab = await storage.getOwnedAbilities();
@@ -317,7 +341,7 @@ export default function App() {
     kolyaSkinRef.current = skins.kolya;
     sabSkinRef.current = skins.sab;
 
-    const applied = applyUpgrades({ maxHp: 150, waterCap: 75, speed: 3.8 }, up, ab);
+    const applied = applyUpgrades({ maxHp: 90, waterCap: 115, speed: 3.8 }, up, ab);
     waterPerShotRef.current = applied.waterPerShot;
     stinkRadiusMultRef.current = applied.stinkRadiusMult;
     alienDurRatioRef.current = applied.alienDurRatio;
@@ -328,8 +352,14 @@ export default function App() {
     regenStinkRef.current = applied.regenOnStink;
 
     const sp = infiniteWorldRef.current.getSpawn();
-    const off = onlineSpawnIndexRef.current * 72;
-    const cx = sp.x + off, cy = sp.y + (onlineSpawnIndexRef.current % 2) * 40;
+    const roomNow = getActiveRoom();
+    const party = roomNow?.getPartySize() ?? 1;
+    const idx = o.memberIdx ?? onlineSpawnIndexRef.current;
+    const baseX = o.spawnX ?? sp.x;
+    const baseY = o.spawnY ?? sp.y;
+    const angle = (idx / Math.max(1, party)) * Math.PI * 2;
+    const cx = baseX + Math.cos(angle) * 42;
+    const cy = baseY + Math.sin(angle) * 42;
 
     kxRef.current = cx; kyRef.current = cy;
     sabXRef.current = cx + 60; sabYRef.current = cy + 40;
@@ -355,7 +385,7 @@ export default function App() {
     spawnTimerRef.current = 0;
     enemiesPerWaveRef.current = 0;
     waveEnemiesKilledRef.current = 0;
-    waveTargetRef.current = getWaveTarget(1);
+    waveTargetRef.current = getWaveTarget(1, party);
     bossActiveRef.current = false;
     rainTimerRef.current = 0;
     tickRef.current = 0;
@@ -388,6 +418,24 @@ export default function App() {
     setGameState("gameover");
   };
 
+  const handlePlayerDeath = () => {
+    if (isDeadRef.current) return;
+    isDeadRef.current = true;
+    kolyaHpRef.current = 0;
+    const room = getActiveRoom();
+    if (!room || room.getPartySize() <= 1) {
+      void endGame();
+      return;
+    }
+    const peers = room.getOtherPeers();
+    if (peers.length > 0 && peers.every(p => p.isDead)) {
+      void endGame();
+      return;
+    }
+    addFloat(kxRef.current, kyRef.current - 55, "УПАЛ! Друг: R рядом", "#faa");
+    setReviveHint("Упал — жди R от напарника");
+  };
+
   // ===== GAME LOOP =====
   useEffect(() => {
     if (gameState !== "playing") { cancelAnimationFrame(loopRef.current); return; }
@@ -399,36 +447,42 @@ export default function App() {
       const W = screenW, H = screenH;
       const SPEED = playerSpeedRef.current;
 
+      const partySize = getActiveRoom()?.getPartySize() ?? 1;
+
       // Movement
       let nx = kxRef.current, ny = kyRef.current;
       const keys = keysRef.current;
-      let mx = 0, my = 0;
-      if (keys.has("KeyW") || keys.has("ArrowUp")) my -= 1;
-      if (keys.has("KeyS") || keys.has("ArrowDown")) my += 1;
-      if (keys.has("KeyA") || keys.has("ArrowLeft")) mx -= 1;
-      if (keys.has("KeyD") || keys.has("ArrowRight")) mx += 1;
-      if (mx !== 0 || my !== 0) {
-        const len = Math.sqrt(mx * mx + my * my) || 1;
-        const iw = infiniteWorldRef.current;
-        iw.ensureNear(kxRef.current, kyRef.current);
-        const tileSpd = getTileSpeed(iw.getTile(kxRef.current, kyRef.current));
-        const spd = SPEED * tileSpd * (isRaining ? rainSpeedRef.current : 1);
-        const tryX = kxRef.current + (mx / len) * spd;
-        const tryY = kyRef.current + (my / len) * spd;
-        if (canMoveTo(tryX, kyRef.current)) nx = tryX;
-        if (canMoveTo(kxRef.current, tryY)) ny = tryY;
+      if (!isDeadRef.current) {
+        let mx = 0, my = 0;
+        if (keys.has("KeyW") || keys.has("ArrowUp")) my -= 1;
+        if (keys.has("KeyS") || keys.has("ArrowDown")) my += 1;
+        if (keys.has("KeyA") || keys.has("ArrowLeft")) mx -= 1;
+        if (keys.has("KeyD") || keys.has("ArrowRight")) mx += 1;
+        if (mx !== 0 || my !== 0) {
+          const len = Math.sqrt(mx * mx + my * my) || 1;
+          const iw = infiniteWorldRef.current;
+          iw.ensureNear(kxRef.current, kyRef.current);
+          const tileSpd = getTileSpeed(iw.getTile(kxRef.current, kyRef.current));
+          const spd = SPEED * tileSpd * (isRaining ? rainSpeedRef.current : 1);
+          const tryX = kxRef.current + (mx / len) * spd;
+          const tryY = kyRef.current + (my / len) * spd;
+          if (canMoveTo(tryX, kyRef.current)) nx = tryX;
+          if (canMoveTo(kxRef.current, tryY)) ny = tryY;
+        }
+        kxRef.current = nx; kyRef.current = ny;
       }
-      kxRef.current = nx; kyRef.current = ny;
 
-      if (keys.has("KeyF")) {
+      if (keys.has("KeyF") && !isDeadRef.current) {
         const prev = waterRef.current;
-        waterRef.current = Math.min(waterCapRef.current, waterRef.current + 0.4);
+        waterRef.current = Math.min(waterCapRef.current, waterRef.current + 0.14);
         if (prev < waterCapRef.current && waterRef.current >= waterCapRef.current - 0.5 && tk % 30 === 0) {
           playSfx("refill");
         }
       }
 
-      if (keys.has("Space") && tk % 18 === 0) {
+      if (pullupCdRef.current > 0) pullupCdRef.current -= 1;
+      if (keys.has("Space") && pullupCdRef.current <= 0 && !isDeadRef.current && tk % 18 === 0) {
+        pullupCdRef.current = 60;
         const newPu = statsRef.current.totalPullUps + 1;
         statsRef.current = { ...statsRef.current, totalPullUps: newPu };
         setPullUps(newPu);
@@ -548,14 +602,43 @@ export default function App() {
           tk % 90 === 0
         ) {
           enemiesPerWaveRef.current += 1;
-          enemiesRef.current = [...enemiesRef.current, spawnEnemy(st.wave, kxRef.current, kyRef.current, infiniteWorldRef.current)];
+          enemiesRef.current = [...enemiesRef.current, spawnEnemy(st.wave, kxRef.current, kyRef.current, infiniteWorldRef.current, partySize)];
         }
       }
 
       const room = getActiveRoom();
-      if (room && tk % 10 === 0) {
-        room.sendPosition(kxRef.current, kyRef.current, kolyaHpRef.current, kolyaMaxHpRef.current, tk);
+      if (room && tk % 8 === 0) {
+        room.sendPosition(
+          kxRef.current, kyRef.current, kolyaHpRef.current, kolyaMaxHpRef.current, tk,
+          isDeadRef.current, kolyaSkinRef.current,
+        );
         onlinePeersRef.current = room.getOtherPeers();
+        if (!isDeadRef.current) {
+          for (const peer of onlinePeersRef.current) {
+            if (peer.isDead && dist(kxRef.current, kyRef.current, peer.x, peer.y) < 72
+              && keys.has("KeyR") && reviveCdRef.current <= 0) {
+              room.sendRevive(peer.username);
+              reviveCdRef.current = 50;
+              addFloat(peer.x, peer.y - 40, `R → ${peer.username}`, "#6cf");
+            }
+          }
+        } else if (tk % 40 === 0) {
+          const peers = room.getOtherPeers();
+          if (peers.length > 0 && peers.every(p => p.isDead)) void endGame();
+        }
+      }
+      if (reviveCdRef.current > 0) reviveCdRef.current -= 1;
+
+      if (tk % 720 === 0) {
+        const ev = randOf(WORLD_EVENTS);
+        addFloat(kxRef.current, kyRef.current - 70, ev, "#fd6");
+        statsRef.current = { ...statsRef.current, score: statsRef.current.score + 35 };
+        if (ev.includes("лут") || ev.includes("куст")) {
+          itemsRef.current = [...itemsRef.current, spawnItem(kxRef.current + rand(-80, 80), kyRef.current + rand(-80, 80))];
+        }
+        if (ev.includes("замедли")) {
+          enemiesRef.current = enemiesRef.current.map(en => ({ ...en, speed: en.speed * 0.88 }));
+        }
       }
 
       // Spawn
@@ -569,7 +652,7 @@ export default function App() {
           for (let i = 0; i < spawnCount; i++) {
             if (enemiesPerWaveRef.current < waveTargetRef.current) {
               enemiesPerWaveRef.current += 1;
-              enemiesRef.current = [...enemiesRef.current, spawnEnemy(st.wave, kxRef.current, kyRef.current, infiniteWorldRef.current)];
+              enemiesRef.current = [...enemiesRef.current, spawnEnemy(st.wave, kxRef.current, kyRef.current, infiniteWorldRef.current, partySize)];
             }
           }
         }
@@ -579,7 +662,7 @@ export default function App() {
       if (!bossActiveRef.current && waveEnemiesKilledRef.current >= waveTargetRef.current && enemiesRef.current.length === 0) {
         const nextWave = st.wave + 1;
         statsRef.current = { ...statsRef.current, wave: nextWave, level: Math.floor(nextWave / 3) + 1 };
-        waveTargetRef.current = getWaveTarget(nextWave);
+        waveTargetRef.current = getWaveTarget(nextWave, partySize);
         waveEnemiesKilledRef.current = 0;
         enemiesPerWaveRef.current = 0;
         setXpBar(0);
@@ -622,17 +705,17 @@ export default function App() {
         const touchD = en.type === "vyaly_step" ? 50 : 42;
         if (dl < touchD && invincibleRef.current <= 0 && en.attackTimer <= 0) {
           const dmgMap: Partial<Record<Enemy["type"], number>> = {
-            vyaly_step: 8, router: 6, lag_ball: 4, tree_ghost: 10, wifi_drone: 5,
-            cable_snake: 7, lag_ghost: 9, provider_golem: 12, child_swarm: 3, rain_drop: 4, kalyan_spirit: 8,
+            vyaly_step: 11, router: 9, lag_ball: 6, tree_ghost: 14, wifi_drone: 7,
+            cable_snake: 10, lag_ghost: 12, provider_golem: 16, child_swarm: 5, rain_drop: 6, kalyan_spirit: 11,
           };
-          const dmg = dmgMap[en.type] ?? 5;
+          const dmg = dmgMap[en.type] ?? 7;
           kolyaHpRef.current = Math.max(0, kolyaHpRef.current - dmg);
           invincibleRef.current = 50;
           playSfx("hit");
           setShakeScreen(true); setTimeout(() => setShakeScreen(false), 250);
           addFloat(kxRef.current, kyRef.current - 30, `-${dmg}`, "#f44");
           attacked = true;
-          if (kolyaHpRef.current <= 0) { endGame(); return en; }
+          if (kolyaHpRef.current <= 0) { handlePlayerDeath(); return en; }
         }
 
         let newProjs = projRef.current;
@@ -704,15 +787,15 @@ export default function App() {
           projRef.current = bossProjs;
         }
         if (bPhase >= 2 && tk % 150 === 0) {
-          enemiesRef.current = [...enemiesRef.current, spawnEnemy(st.wave, kxRef.current, kyRef.current, infiniteWorldRef.current)];
+          enemiesRef.current = [...enemiesRef.current, spawnEnemy(st.wave, kxRef.current, kyRef.current, infiniteWorldRef.current, partySize)];
         }
         bossRef.current = { ...bossRef.current, x: nbx, y: nby, phase: bPhase, rage, angle: bossRef.current.angle + 0.025 };
 
         if (dist(nbx, nby, kxRef.current, kyRef.current) < 75 && invincibleRef.current <= 0) {
-          kolyaHpRef.current = Math.max(0, kolyaHpRef.current - 22);
+          kolyaHpRef.current = Math.max(0, kolyaHpRef.current - 28);
           invincibleRef.current = 80;
-          addFloat(kxRef.current, kyRef.current - 40, "-22 БОСС!", "#f00");
-          if (kolyaHpRef.current <= 0) endGame();
+          addFloat(kxRef.current, kyRef.current - 40, "-28 БОСС!", "#f00");
+          if (kolyaHpRef.current <= 0) handlePlayerDeath();
         }
       }
 
@@ -773,7 +856,7 @@ export default function App() {
         if (dist(p.x, p.y, kxRef.current, kyRef.current) < 24 && invincibleRef.current <= 0) {
           kolyaHpRef.current = Math.max(0, kolyaHpRef.current - p.dmg);
           invincibleRef.current = 45;
-          if (kolyaHpRef.current <= 0) { endGame(); return false; }
+          if (kolyaHpRef.current <= 0) { handlePlayerDeath(); return false; }
           return false;
         }
         if (sabHpRef.current > 0 && dist(p.x, p.y, sabXRef.current, sabYRef.current) < 20) {
@@ -887,9 +970,14 @@ export default function App() {
     return (
       <MenuScreen
         onStartSolo={() => startGame()}
-        onStartOnline={(seed, spawnIdx) => {
+        onStartOnline={(payload: GameStartPayload, spawnIdx) => {
           onlineSpawnIndexRef.current = spawnIdx;
-          startGame(seed);
+          void startGame({
+            seed: payload.seed,
+            spawnX: payload.spawnX,
+            spawnY: payload.spawnY,
+            memberIdx: spawnIdx,
+          });
         }}
         user={user}
         serverOnline={storage.isServerMode()}
@@ -987,18 +1075,16 @@ export default function App() {
         </div>
 
         <div className="hud-panel hud-controls">
-          WASD · ЛКМ вода · Q · F заряд · Space · E · 1-4 · P/Esc
+          WASD · ЛКМ вода · Q · F заряд · Space подтяг (1с) · R ревайв · E · 1-4
         </div>
 
-        <div className="minimap">
-          <svg width="110" height="110" viewBox={`${kx - 400} ${ky - 400} 800 800`}>
-            <rect x={kx - 400} y={ky - 400} width={800} height={800} fill="#1a2a1a" />
-            <circle cx={kx} cy={ky} r={40} fill="#ff6b35" />
-            <circle cx={sabX} cy={sabY} r={25} fill="#fb3" />
-            {enemies.slice(0, 30).map(en => <circle key={en.id} cx={en.x} cy={en.y} r={15} fill="#f44" />)}
-            {boss && <circle cx={boss.x} cy={boss.y} r={60} fill="#f0f" />}
-          </svg>
-        </div>
+        {reviveHint && (
+          <div className="hud-panel" style={{ bottom: 200, left: "50%", transform: "translateX(-50%)", color: "#f88", fontSize: 13, fontWeight: "bold" }}>
+            {reviveHint}
+          </div>
+        )}
+
+        <Minimap worldRef={worldRef} infiniteWorldRef={infiniteWorldRef} />
 
         <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, height: 6, zIndex: 12 }}>
           <div style={{ width: `${xpBar}%`, height: "100%", background: "linear-gradient(90deg,#84f,#f4f)", transition: "width 0.4s" }} />
