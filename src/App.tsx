@@ -61,7 +61,12 @@ export default function App() {
   const waterPerShotRef = useRef(3);
   const stinkRadiusMultRef = useRef(1);
   const alienFreezeTimerRef = useRef(0);
+  const alienChargingRef = useRef(false);
+  const alienChargeAccumRef = useRef(0);
+  const alienChargeRateRef = useRef(1);
   const isRefillingRef = useRef(false);
+  const ALIEN_CHARGE_MAX = 600;
+  const ALIEN_CHARGE_MIN = 24;
   const doubleShotRef = useRef(false);
   const sabFuryRef = useRef(false);
   const pullupHealBonusRef = useRef(0);
@@ -87,6 +92,8 @@ export default function App() {
   const [alienCooldown, setAlienCooldown] = useState(0);
   const [alienMaxCd, setAlienMaxCd] = useState(3600);
   const [alienFreezeLeft, setAlienFreezeLeft] = useState(0);
+  const [alienChargeUi, setAlienChargeUi] = useState(0);
+  const [alienChargingUi, setAlienChargingUi] = useState(false);
   const [pullUps, setPullUps] = useState(0);
   const [pullupAnim, setPullupAnim] = useState(false);
   const [isRaining, setIsRaining] = useState(false);
@@ -275,7 +282,7 @@ export default function App() {
         const idx = parseInt(e.code.replace("Digit", "")) - 1;
         if (idx >= 0 && idx < 4) useInventorySlot(idx);
       }
-      if (["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(e.code)) {
+      if (["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space", "KeyE"].includes(e.code)) {
         e.preventDefault();
       }
     };
@@ -382,6 +389,9 @@ export default function App() {
     waterCapRef.current = applied.waterCap;
     isAlienRef.current = false;
     alienFreezeTimerRef.current = 0;
+    alienChargingRef.current = false;
+    alienChargeAccumRef.current = 0;
+    alienChargeRateRef.current = applied.alienChargeRate;
     isRainingRef.current = false;
     alienCooldownRef.current = 0;
     isRefillingRef.current = false;
@@ -510,17 +520,45 @@ export default function App() {
         addFloat(kxRef.current, kyRef.current - 50, `ПОДТЯГ #${newPu}!`, "#ffdd00");
       }
 
-      if (alienFreezeTimerRef.current > 0) alienFreezeTimerRef.current -= 1;
-      if (alienFreezeTimerRef.current <= 0) isAlienRef.current = false;
-
-      if (keys.has("KeyE") && alienCooldownRef.current <= 0 && alienFreezeTimerRef.current <= 0 && !isDeadRef.current) {
+      const activateAlienHypno = (chargeTicks: number) => {
+        alienFreezeTimerRef.current = chargeTicks;
         alienCooldownRef.current = alienMaxCdRef.current;
-        alienFreezeTimerRef.current = 600;
-        isAlienRef.current = true;
         statsRef.current = { ...statsRef.current, alienAbductions: statsRef.current.alienAbductions + 1 };
-        addFloat(kxRef.current, kyRef.current - 60, "ГИПНОЗ 10 СЕК!", "#00ff88");
+        const sec = (chargeTicks / 60).toFixed(1);
+        addFloat(kxRef.current, kyRef.current - 60, `ГИПНОЗ ${sec}с!`, "#00ff88");
         playSfx("alien");
-        enemiesRef.current = enemiesRef.current.map(en => ({ ...en, stun: Math.max(en.stun, 600) }));
+        enemiesRef.current = enemiesRef.current.map(en => ({
+          ...en, stun: Math.max(en.stun, chargeTicks),
+        }));
+      };
+
+      if (alienFreezeTimerRef.current > 0) {
+        alienFreezeTimerRef.current -= 1;
+        isAlienRef.current = true;
+      } else {
+        const canChargeAlien = alienCooldownRef.current <= 0 && !isDeadRef.current;
+        if (canChargeAlien && keys.has("KeyE")) {
+          alienChargingRef.current = true;
+          isAlienRef.current = true;
+          alienChargeAccumRef.current = Math.min(
+            ALIEN_CHARGE_MAX,
+            alienChargeAccumRef.current + alienChargeRateRef.current,
+          );
+          if (alienChargeAccumRef.current >= ALIEN_CHARGE_MAX) {
+            activateAlienHypno(ALIEN_CHARGE_MAX);
+            alienChargingRef.current = false;
+            alienChargeAccumRef.current = 0;
+          }
+        } else if (alienChargingRef.current) {
+          alienChargingRef.current = false;
+          isAlienRef.current = false;
+          if (alienChargeAccumRef.current >= ALIEN_CHARGE_MIN) {
+            activateAlienHypno(Math.floor(alienChargeAccumRef.current));
+          }
+          alienChargeAccumRef.current = 0;
+        } else {
+          isAlienRef.current = false;
+        }
       }
       if (alienCooldownRef.current > 0) alienCooldownRef.current -= 1;
 
@@ -968,6 +1006,8 @@ export default function App() {
         setWater(waterRef.current);
         setAlienCooldown(alienCooldownRef.current);
         setAlienFreezeLeft(alienFreezeTimerRef.current);
+        setAlienChargeUi(alienChargeAccumRef.current);
+        setAlienChargingUi(alienChargingRef.current);
         setIsAlien(isAlienRef.current);
         setSabHp(sabHpRef.current);
         setEnemies([...enemiesRef.current]);
@@ -1022,8 +1062,9 @@ export default function App() {
 
   const hpPct = (kolyaHp / kolyaMaxHp) * 100;
   const sabHpPct = (sabHp / sabMaxHp) * 100;
-  const alienReady = alienCooldown <= 0 && alienFreezeLeft <= 0;
+  const alienReady = alienCooldown <= 0 && alienFreezeLeft <= 0 && !alienChargingUi;
   const alienPct = Math.max(0, Math.min(100, ((alienMaxCd - alienCooldown) / alienMaxCd) * 100));
+  const alienChargePct = Math.min(100, (alienChargeUi / 600) * 100);
   const onlineActive = getActiveRoom() != null;
 
   return (
@@ -1058,13 +1099,23 @@ export default function App() {
           <div style={{ color: water >= waterPerShotRef.current ? "#8af" : "#f66", fontSize: 10 }}>
             Вода {Math.round(water)}Л/{waterCap}Л {water <= 0.5 ? "(F — пусто)" : ""}
           </div>
-          <div className="hud-bar" style={{ width: 200, height: 6 }}><div className="hud-bar-fill" style={{ width: `${alienPct}%`, background: alienReady ? "#0f8" : "#3a5" }} /></div>
-          <div style={{ color: alienReady ? "#0f8" : "#5a7", fontSize: 10 }}>
+          <div className="hud-bar" style={{ width: 200, height: 6 }}>
+            <div
+              className="hud-bar-fill"
+              style={{
+                width: `${alienChargingUi ? alienChargePct : alienFreezeLeft > 0 ? 100 : alienPct}%`,
+                background: alienChargingUi ? "#8f8" : alienFreezeLeft > 0 ? "#0fa" : alienReady ? "#0f8" : "#3a5",
+              }}
+            />
+          </div>
+          <div style={{ color: alienReady || alienChargingUi ? "#0f8" : "#5a7", fontSize: 10 }}>
             {alienFreezeLeft > 0
-              ? `Гипноз ${Math.ceil(alienFreezeLeft / 60)}с`
-              : alienReady
-                ? "E — гипноз врагов 10с"
-                : `КД ${Math.ceil(alienCooldown / 60)}с`}
+              ? `Гипноз ${(alienFreezeLeft / 60).toFixed(1)}с`
+              : alienChargingUi
+                ? `Заряд E ${(alienChargeUi / 60).toFixed(1)}/10с (отпусти)`
+                : alienReady
+                  ? "Зажми E — заряд до 10с"
+                  : `КД ${Math.ceil(alienCooldown / 60)}с`}
           </div>
         </div>
 

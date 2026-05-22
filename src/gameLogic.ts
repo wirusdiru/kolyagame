@@ -135,14 +135,14 @@ export function applyUpgrades(
   up: PlayerUpgrades,
   abilities?: OwnedAbilities,
 ) {
-  const alienDurBonus = Math.min(0.2, up.alienDuration * 0.05 + (abilities?.traffic_steal ? 0.08 : 0));
+  const alienChargeBonus = Math.min(0.45, up.alienDuration * 0.1 + (abilities?.traffic_steal ? 0.15 : 0));
   return {
     maxHp: base.maxHp + up.maxHp * 10,
     waterCap: base.waterCap + up.waterCap * 12,
     speed: base.speed * (1 + up.speed * 0.04),
     stinkDmg: 5 + up.stinkPower * 2,
     alienCd: Math.max(3000, Math.floor(3600 * (1 - up.alienCdReduce * 0.08))),
-    alienDurRatio: 0.25 + alienDurBonus,
+    alienChargeRate: 1 + alienChargeBonus,
     sabDmg: 12 + up.sabDmg * 2,
     waterPerShot: Math.max(1.5, 3 - up.waterEfficiency * 0.2 - (abilities?.water_splash ? 1 : 0)),
     stinkRadiusMult: 1 + (abilities?.stink_mega ? 0.25 : 0),

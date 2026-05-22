@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import type { AbilityId, KolyaSkinId, LeaderboardEntry, SabSkinId, ShopUpgradeId, UserProfile } from "../types";
 import {
-  SHOP_ITEMS, ABILITY_SHOP, KOLYA_SKINS, SAB_SKINS,
+  SHOP_ITEMS, ABILITY_SHOP, KOLYA_SKINS, SAB_SKINS, SHOP_LEVEL_STEP,
 } from "../constants";
 import * as storage from "../storage";
 import { OnlineRoom, type GameStartPayload, type RoomMember } from "../onlineRoom";
@@ -75,7 +75,7 @@ export default function MenuScreen({ onStartSolo, onStartOnline, user, serverOnl
     if (!item || !user) return;
     const level = user.upgrades[id] ?? 0;
     if (level >= item.maxLevel) return;
-    const cost = item.baseCost + level * 40;
+    const cost = item.baseCost + level * SHOP_LEVEL_STEP;
     setLoading(true);
     const ok = await storage.buyUpgrade(id, cost);
     setLoading(false);
@@ -302,7 +302,7 @@ export default function MenuScreen({ onStartSolo, onStartOnline, user, serverOnl
                 </div>
                 {shopSection === "upgrades" && SHOP_ITEMS.map(item => {
                   const lvl = user.upgrades[item.id] ?? 0;
-                  const cost = item.baseCost + lvl * 40;
+                  const cost = item.baseCost + lvl * SHOP_LEVEL_STEP;
                   const maxed = lvl >= item.maxLevel;
                   return (
                     <div key={item.id} className="shop-item">
