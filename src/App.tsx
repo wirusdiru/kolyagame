@@ -584,17 +584,32 @@ export default function App() {
 
       if (sabAttackTimerRef.current > 0) sabAttackTimerRef.current -= 1;
 
-      // Враги слишком далеко — телепорт ближе к Коле
-      const CATCHUP_DIST = 720;
-      if (!bossActiveRef.current) {
-        const alive = enemiesRef.current.filter(en => en.hp > 0);
-        if (alive.length > 0 && alive.every(en => dist(en.x, en.y, kxRef.current, kyRef.current) > CATCHUP_DIST)) {
-          enemiesRef.current = alive.map((en, i) => {
-            const pos = findLandPosition(infiniteWorldRef.current, kxRef.current, kyRef.current, 260, 420);
-            return { ...en, x: pos.x + (i % 4) * 35, y: pos.y + Math.floor(i / 4) * 35 };
-          });
-          addFloat(kxRef.current, kyRef.current - 55, "Враги догнали!", "#fd0");
+      // Враги далеко — подтягиваем к Коле (каждый отдельно, не ждём пока все убегут)
+      const CATCHUP_DIST = 480;
+      if (!bossActiveRef.current && tk % 20 === 0) {
+        let caughtUp = 0;
+        enemiesRef.current = enemiesRef.current.map((en, i) => {
+          if (en.hp <= 0) return en;
+          if (dist(en.x, en.y, kxRef.current, kyRef.current) <= CATCHUP_DIST) return en;
+          const pos = findLandPosition(
+            infiniteWorldRef.current, kxRef.current, kyRef.current, 200, 360,
+          );
+          caughtUp += 1;
+          const ring = caughtUp;
+          const ang = (ring * 1.7 + en.id * 0.4) % (Math.PI * 2);
+          const r = 70 + (ring % 4) * 38;
+          return {
+            ...en,
+            x: pos.x + Math.cos(ang) * r,
+            y: pos.y + Math.sin(ang) * r,
+            attackTimer: 0,
+            stun: 0,
+          };
+        });
+        if (caughtUp > 0 && tk % 40 === 0) {
+          addFloat(kxRef.current, kyRef.current - 55, `Враги догнали (${caughtUp})`, "#fd0");
         }
+        const alive = enemiesRef.current.filter(en => en.hp > 0);
         if (
           waveEnemiesKilledRef.current < waveTargetRef.current &&
           alive.length === 0 &&
@@ -732,6 +747,18 @@ export default function App() {
 
       if (invincibleRef.current > 0) invincibleRef.current -= 1;
       if (sabInvincibleRef.current > 0) sabInvincibleRef.current -= 1;
+
+      // Босс слишком далеко — тоже подтягиваем
+      if (bossRef.current && bossActiveRef.current && !alienFreeze && tk % 45 === 0) {
+        if (dist(bossRef.current.x, bossRef.current.y, kxRef.current, kyRef.current) > 620) {
+          const pos = findLandPosition(infiniteWorldRef.current, kxRef.current, kyRef.current, 220, 320);
+          bossRef.current = {
+            ...bossRef.current,
+            x: pos.x + rand(-40, 40),
+            y: pos.y - rand(120, 200),
+          };
+        }
+      }
 
       // Boss logic
       if (bossRef.current && bossActiveRef.current && !alienFreeze) {
