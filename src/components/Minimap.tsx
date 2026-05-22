@@ -18,10 +18,6 @@ interface MinimapProps {
   infiniteWorldRef: MutableRefObject<InfiniteWorld>;
 }
 
-function clampEdge(v: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, v));
-}
-
 export default function Minimap({ worldRef, infiniteWorldRef }: MinimapProps) {
   const w = worldRef.current;
   const iw = infiniteWorldRef.current;
@@ -95,53 +91,6 @@ export default function Minimap({ worldRef, infiniteWorldRef }: MinimapProps) {
           return <circle cx={p.x} cy={p.y} r={7} fill="#ff00ff" stroke="#fff" strokeWidth={1} />;
         })()}
         <circle cx={sab.x} cy={sab.y} r={5} fill="#ffaa22" stroke="#fff" strokeWidth={1} />
-        {w.onlinePeers.map(p => {
-          const raw = toMm(p.x, p.y);
-          const onMap = raw.x >= 4 && raw.y >= 4 && raw.x <= MM - 4 && raw.y <= MM - 4;
-          const ex = clampEdge(raw.x, 8, MM - 8);
-          const ey = clampEdge(raw.y, 8, MM - 8);
-          const dist = Math.round(Math.hypot(p.x - cx, p.y - cy));
-          const stale = w.tick - p.tick > 90;
-          return (
-            <g key={p.username}>
-              {onMap && (
-                <line
-                  x1={you.x}
-                  y1={you.y}
-                  x2={raw.x}
-                  y2={raw.y}
-                  stroke="rgba(68,204,255,0.45)"
-                  strokeWidth={1.5}
-                  strokeDasharray="3 2"
-                />
-              )}
-              <circle
-                cx={onMap ? raw.x : ex}
-                cy={onMap ? raw.y : ey}
-                r={p.isDead ? 4 : 6}
-                fill={stale ? "#556" : p.isDead ? "#444" : "#44ccff"}
-                stroke="#fff"
-                strokeWidth={1.5}
-              />
-              {!p.isDead && (
-                <polygon
-                  points={`${onMap ? raw.x : ex},${(onMap ? raw.y : ey) - 12} ${(onMap ? raw.x : ex) - 5},${(onMap ? raw.y : ey) - 5} ${(onMap ? raw.x : ex) + 5},${(onMap ? raw.y : ey) - 5}`}
-                  fill={stale ? "#889" : "#44ccff"}
-                />
-              )}
-              <text
-                x={onMap ? raw.x : ex}
-                y={(onMap ? raw.y : ey) + 14}
-                fill="#adf"
-                fontSize={7}
-                textAnchor="middle"
-                fontFamily="Consolas, monospace"
-              >
-                {stale ? "?" : `${dist}`}
-              </text>
-            </g>
-          );
-        })}
         <circle cx={you.x} cy={you.y} r={7} fill="#ff6b35" stroke="#fff" strokeWidth={2} />
         <polygon
           points={`${you.x},${you.y - 14} ${you.x - 6},${you.y - 6} ${you.x + 6},${you.y - 6}`}
@@ -150,7 +99,6 @@ export default function Minimap({ worldRef, infiniteWorldRef }: MinimapProps) {
       </svg>
       <div className="minimap-legend">
         <span><i className="dot orange" /> Коля</span>
-        <span><i className="dot cyan" /> Друг ({w.onlinePeers.length})</span>
         <span><i className="dot red" /> Враг</span>
       </div>
     </div>

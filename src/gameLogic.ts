@@ -143,6 +143,7 @@ export function applyUpgrades(
     stinkDmg: 5 + up.stinkPower * 2,
     alienCd: Math.max(3000, Math.floor(3600 * (1 - up.alienCdReduce * 0.08))),
     alienChargeRate: 1 + alienChargeBonus,
+    alienFreezeMax: Math.min(600, Math.floor(600 * (1 + alienChargeBonus * 0.5))),
     sabDmg: 12 + up.sabDmg * 2,
     waterPerShot: Math.max(1.5, 3 - up.waterEfficiency * 0.2 - (abilities?.water_splash ? 1 : 0)),
     stinkRadiusMult: 1 + (abilities?.stink_mega ? 0.25 : 0),

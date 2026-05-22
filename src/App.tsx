@@ -21,10 +21,7 @@ import * as storage from "./storage";
 import GameCanvas from "./components/GameCanvas";
 import Boss3D from "./components/Boss3D";
 import { emptyWorld, type WorldSnapshot } from "./worldRef";
-import { getActiveRoom, setOnRevivedListener } from "./onlineRoom";
-import type { GameStartPayload, PeerState } from "./onlineRoom";
 import Minimap from "./components/Minimap";
-import PeerCompass from "./components/PeerCompass";
 import MenuScreen from "./screens/MenuScreen";
 import PauseOverlay from "./screens/PauseOverlay";
 import GameOverScreen from "./screens/GameOverScreen";
@@ -61,12 +58,9 @@ export default function App() {
   const waterPerShotRef = useRef(3);
   const stinkRadiusMultRef = useRef(1);
   const alienFreezeTimerRef = useRef(0);
-  const alienChargingRef = useRef(false);
-  const alienChargeAccumRef = useRef(0);
-  const alienChargeRateRef = useRef(1);
-  const isRefillingRef = useRef(false);
-  const ALIEN_CHARGE_MAX = 600;
-  const ALIEN_CHARGE_MIN = 24;
+  const alienMaxFreezeRef = useRef(600);
+  const alienTriggerRef = useRef(false);
+  const waterRefillOkRef = useRef(true);
   const doubleShotRef = useRef(false);
   const sabFuryRef = useRef(false);
   const pullupHealBonusRef = useRef(0);
@@ -74,12 +68,8 @@ export default function App() {
   const regenStinkRef = useRef(0);
   const sabBiteTargetRef = useRef<number | null>(null);
   const sabBitingRef = useRef(false);
-  const onlinePeersRef = useRef<PeerState[]>([]);
-  const onlineSpawnIndexRef = useRef(0);
   const isDeadRef = useRef(false);
   const pullupCdRef = useRef(0);
-  const reviveCdRef = useRef(0);
-  const [reviveHint, setReviveHint] = useState("");
 
   const spawn = infiniteWorldRef.current.getSpawn();
   const [kx, setKx] = useState(spawn.x);
@@ -91,9 +81,8 @@ export default function App() {
   const [isAlien, setIsAlien] = useState(false);
   const [alienCooldown, setAlienCooldown] = useState(0);
   const [alienMaxCd, setAlienMaxCd] = useState(3600);
+  const [alienMaxFreezeDisp, setAlienMaxFreezeDisp] = useState(10);
   const [alienFreezeLeft, setAlienFreezeLeft] = useState(0);
-  const [alienChargeUi, setAlienChargeUi] = useState(0);
-  const [alienChargingUi, setAlienChargingUi] = useState(false);
   const [pullUps, setPullUps] = useState(0);
   const [pullupAnim, setPullupAnim] = useState(false);
   const [isRaining, setIsRaining] = useState(false);
@@ -191,7 +180,6 @@ export default function App() {
       kolyaSkin: kolyaSkinRef.current,
       sabSkin: sabSkinRef.current,
       biomeLabel: BIOME_NAMES[biome] ?? biome,
-      onlinePeers: onlinePeersRef.current,
       isLocalDead: isDeadRef.current,
     };
   };
@@ -221,18 +209,6 @@ export default function App() {
       createFloatingText(x, y, text, color, stack),
     ];
   }, []);
-
-  useEffect(() => {
-    setOnRevivedListener(() => {
-      isDeadRef.current = false;
-      kolyaHpRef.current = Math.floor(kolyaMaxHpRef.current * 0.45);
-      invincibleRef.current = 90;
-      setReviveHint("");
-      addFloat(kxRef.current, kyRef.current - 50, "ВОСКРЕШЁН!", "#6f6");
-      playSfx("refill");
-    });
-    return () => setOnRevivedListener(null);
-  }, [addFloat]);
 
   const addToInventory = (type: ItemType) => {
     const inv = [...inventoryRef.current];
@@ -282,7 +258,10 @@ export default function App() {
         const idx = parseInt(e.code.replace("Digit", "")) - 1;
         if (idx >= 0 && idx < 4) useInventorySlot(idx);
       }
-      if (["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space", "KeyE"].includes(e.code)) {
+      if (e.code === "KeyE" && gameState === "playing") {
+        alienTriggerRef.current = true;
+      }
+      if (["KeyW", "KeyA", "KeyS", "KeyD", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space", "KeyE", "KeyF", "KeyQ"].includes(e.code)) {
         e.preventDefault();
       }
     };
@@ -299,7 +278,7 @@ export default function App() {
   }, [gameState]);
 
   const fireWaterShot = (tx: number, ty: number) => {
-    if (keysRef.current.has("KeyF") || isRefillingRef.current) return;
+    if (keysRef.current.has("KeyF")) return;
     const cost = waterPerShotRef.current;
     if (waterRef.current < cost) {
       addFloat(kxRef.current, kyRef.current - 40, "Мало воды! F при ≤2Л", "#f88");
@@ -328,7 +307,7 @@ export default function App() {
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     if (gameState !== "playing" || isDeadRef.current) return;
-    if (keysRef.current.has("KeyF") || isRefillingRef.current) return;
+    if (keysRef.current.has("KeyF")) return;
     if (waterRef.current < waterPerShotRef.current) return;
     const world = screenToWorld(e.clientX, e.clientY);
     fireWaterShot(world.x, world.y);
@@ -339,8 +318,8 @@ export default function App() {
   const startGame = async (opts?: number | StartOpts) => {
     const o: StartOpts = typeof opts === "number" ? { seed: opts } : (opts ?? {});
     isDeadRef.current = false;
-    setReviveHint("");
     pullupCdRef.current = 0;
+    waterRefillOkRef.current = true;
     resetIds();
     const newSeed = o.seed ?? Date.now() + Math.floor(Math.random() * 1_000_000);
     infiniteWorldRef.current = new InfiniteWorld(newSeed);
@@ -363,22 +342,8 @@ export default function App() {
     regenStinkRef.current = applied.regenOnStink;
 
     const sp = infiniteWorldRef.current.getSpawn();
-    const roomNow = getActiveRoom();
-    const party = roomNow?.getPartySize() ?? 1;
-    const baseX = o.spawnX ?? sp.x;
-    const baseY = o.spawnY ?? sp.y;
-    let cx = baseX;
-    let cy = baseY;
-    if (roomNow) {
-      if (roomNow.isHost) {
-        cx = baseX;
-        cy = baseY;
-      } else {
-        const slot = Math.max(1, roomNow.members.findIndex(m => m.username === roomNow.username));
-        cx = baseX + 50 + (slot - 1) * 38;
-        cy = baseY + 20;
-      }
-    }
+    const cx = sp.x;
+    const cy = sp.y;
 
     kxRef.current = cx; kyRef.current = cy;
     sabXRef.current = cx + 60; sabYRef.current = cy + 40;
@@ -389,12 +354,9 @@ export default function App() {
     waterCapRef.current = applied.waterCap;
     isAlienRef.current = false;
     alienFreezeTimerRef.current = 0;
-    alienChargingRef.current = false;
-    alienChargeAccumRef.current = 0;
-    alienChargeRateRef.current = applied.alienChargeRate;
+    alienMaxFreezeRef.current = applied.alienFreezeMax;
     isRainingRef.current = false;
     alienCooldownRef.current = 0;
-    isRefillingRef.current = false;
     alienMaxCdRef.current = applied.alienCd;
     sabHpRef.current = 80;
     invincibleRef.current = 0;
@@ -409,7 +371,7 @@ export default function App() {
     spawnTimerRef.current = 0;
     enemiesPerWaveRef.current = 0;
     waveEnemiesKilledRef.current = 0;
-    waveTargetRef.current = getWaveTarget(1, party);
+    waveTargetRef.current = getWaveTarget(1);
     bossActiveRef.current = false;
     rainTimerRef.current = 0;
     tickRef.current = 0;
@@ -421,6 +383,7 @@ export default function App() {
     setKolyaHp(applied.maxHp); setKolyaMaxHp(applied.maxHp);
     setWater(applied.waterCap); setWaterCap(applied.waterCap);
     setIsAlien(false); setAlienCooldown(0); setAlienMaxCd(applied.alienCd);
+    setAlienMaxFreezeDisp(Math.round(applied.alienFreezeMax / 60));
     setStinkPower(applied.stinkDmg); setPlayerSpeed(applied.speed); setSabDmg(applied.sabDmg);
     setSabHp(80); setInvincible(0);
     setEnemies([]); setBoss(null);
@@ -442,24 +405,6 @@ export default function App() {
     setGameState("gameover");
   };
 
-  const handlePlayerDeath = () => {
-    if (isDeadRef.current) return;
-    isDeadRef.current = true;
-    kolyaHpRef.current = 0;
-    const room = getActiveRoom();
-    if (!room || room.getPartySize() <= 1) {
-      void endGame();
-      return;
-    }
-    const peers = room.getOtherPeers();
-    if (peers.length > 0 && peers.every(p => p.isDead)) {
-      void endGame();
-      return;
-    }
-    addFloat(kxRef.current, kyRef.current - 55, "УПАЛ! Друг: R рядом", "#faa");
-    setReviveHint("Упал — жди R от напарника");
-  };
-
   // ===== GAME LOOP =====
   useEffect(() => {
     if (gameState !== "playing") { cancelAnimationFrame(loopRef.current); return; }
@@ -470,8 +415,6 @@ export default function App() {
       const st = statsRef.current;
       const W = screenW, H = screenH;
       const SPEED = playerSpeedRef.current;
-
-      const partySize = getActiveRoom()?.getPartySize() ?? 1;
 
       // Movement
       let nx = kxRef.current, ny = kyRef.current;
@@ -496,15 +439,18 @@ export default function App() {
         kxRef.current = nx; kyRef.current = ny;
       }
 
-      if (keys.has("KeyF") && !isDeadRef.current) {
-        if (waterRef.current <= 2) {
-          isRefillingRef.current = true;
+      if (waterRef.current <= 2) waterRefillOkRef.current = true;
+
+      if (keys.has("KeyF") && !isDeadRef.current && waterRefillOkRef.current) {
+        if (waterRef.current < waterCapRef.current - 0.01) {
           const prev = waterRef.current;
-          waterRef.current = Math.min(waterCapRef.current, waterRef.current + 0.12);
-          if (prev <= 2 && waterRef.current > 2 && tk % 20 === 0) playSfx("refill");
+          waterRef.current = Math.min(waterCapRef.current, waterRef.current + 0.45);
+          if (prev <= 2 && waterRef.current > 2 && tk % 15 === 0) playSfx("refill");
+          if (tk % 4 === 0) setWater(waterRef.current);
         }
-      } else {
-        isRefillingRef.current = false;
+      }
+      if (!keys.has("KeyF") && waterRef.current > 2.5) {
+        waterRefillOkRef.current = false;
       }
 
       if (pullupCdRef.current > 0) pullupCdRef.current -= 1;
@@ -529,33 +475,16 @@ export default function App() {
         playSfx("alien");
       };
 
+      if (alienTriggerRef.current && alienCooldownRef.current <= 0 && alienFreezeTimerRef.current <= 0 && !isDeadRef.current) {
+        alienTriggerRef.current = false;
+        activateAlienHypno(alienMaxFreezeRef.current);
+      }
+
       if (alienFreezeTimerRef.current > 0) {
         alienFreezeTimerRef.current -= 1;
         isAlienRef.current = true;
       } else {
-        const canChargeAlien = alienCooldownRef.current <= 0 && !isDeadRef.current;
-        if (canChargeAlien && keys.has("KeyE")) {
-          alienChargingRef.current = true;
-          isAlienRef.current = true;
-          alienChargeAccumRef.current = Math.min(
-            ALIEN_CHARGE_MAX,
-            alienChargeAccumRef.current + alienChargeRateRef.current,
-          );
-          if (alienChargeAccumRef.current >= ALIEN_CHARGE_MAX) {
-            activateAlienHypno(ALIEN_CHARGE_MAX);
-            alienChargingRef.current = false;
-            alienChargeAccumRef.current = 0;
-          }
-        } else if (alienChargingRef.current) {
-          alienChargingRef.current = false;
-          isAlienRef.current = false;
-          if (alienChargeAccumRef.current >= ALIEN_CHARGE_MIN) {
-            activateAlienHypno(Math.floor(alienChargeAccumRef.current));
-          }
-          alienChargeAccumRef.current = 0;
-        } else {
-          isAlienRef.current = false;
-        }
+        isAlienRef.current = false;
       }
       if (alienCooldownRef.current > 0) alienCooldownRef.current -= 1;
 
@@ -565,13 +494,17 @@ export default function App() {
         if (regenStinkRef.current > 0 && tk % 24 === 0) {
           kolyaHpRef.current = Math.min(kolyaMaxHpRef.current, kolyaHpRef.current + regenStinkRef.current);
         }
-        const stinkKilled: number[] = [];
-        enemiesRef.current = enemiesRef.current.map(en => {
-          if (en.hp <= 0) return en;
-          if (dist(en.x, en.y, kxRef.current, kyRef.current) >= sr) return en;
+        const nextEnemies: Enemy[] = [];
+        let stinkKills = 0;
+        for (const en of enemiesRef.current) {
+          if (en.hp <= 0) continue;
+          if (dist(en.x, en.y, kxRef.current, kyRef.current) >= sr) {
+            nextEnemies.push(en);
+            continue;
+          }
           const hp = en.hp - stinkPowerRef.current;
           if (hp <= 0) {
-            stinkKilled.push(en.id);
+            stinkKills += 1;
             const pts = getEnemyPoints(en.type);
             statsRef.current = {
               ...statsRef.current,
@@ -579,12 +512,13 @@ export default function App() {
               enemiesKilled: statsRef.current.enemiesKilled + 1,
             };
             waveEnemiesKilledRef.current += 1;
-            return { ...en, hp: 0 };
+            continue;
           }
-          return { ...en, hp };
-        }).filter(en => en.hp > 0);
-        if (stinkKilled.length > 0 && tk % 20 === 0) {
-          addFloat(kxRef.current, kyRef.current - 45, `ВОНЬ ×${stinkKilled.length}`, "#aaff44");
+          nextEnemies.push({ ...en, hp });
+        }
+        enemiesRef.current = nextEnemies;
+        if (stinkKills > 0 && tk % 24 === 0) {
+          addFloat(kxRef.current, kyRef.current - 45, `ВОНЬ ×${stinkKills}`, "#aaff44");
         }
         if (bossRef.current && dist(bossRef.current.x, bossRef.current.y, kxRef.current, kyRef.current) < sr + 50) {
           bossRef.current = { ...bossRef.current, hp: bossRef.current.hp - Math.floor(stinkPowerRef.current * 0.7) };
@@ -668,32 +602,9 @@ export default function App() {
           tk % 90 === 0
         ) {
           enemiesPerWaveRef.current += 1;
-          enemiesRef.current = [...enemiesRef.current, spawnEnemy(st.wave, kxRef.current, kyRef.current, infiniteWorldRef.current, partySize)];
+          enemiesRef.current = [...enemiesRef.current, spawnEnemy(st.wave, kxRef.current, kyRef.current, infiniteWorldRef.current)];
         }
       }
-
-      const room = getActiveRoom();
-      if (room && tk % 3 === 0) {
-        room.sendPosition(
-          kxRef.current, kyRef.current, kolyaHpRef.current, kolyaMaxHpRef.current, tk,
-          isDeadRef.current, kolyaSkinRef.current,
-        );
-        onlinePeersRef.current = room.getOtherPeers();
-        if (!isDeadRef.current) {
-          for (const peer of onlinePeersRef.current) {
-            if (peer.isDead && dist(kxRef.current, kyRef.current, peer.x, peer.y) < 72
-              && keys.has("KeyR") && reviveCdRef.current <= 0) {
-              room.sendRevive(peer.username);
-              reviveCdRef.current = 50;
-              addFloat(peer.x, peer.y - 40, `R → ${peer.username}`, "#6cf");
-            }
-          }
-        } else if (tk % 40 === 0) {
-          const peers = room.getOtherPeers();
-          if (peers.length > 0 && peers.every(p => p.isDead)) void endGame();
-        }
-      }
-      if (reviveCdRef.current > 0) reviveCdRef.current -= 1;
 
       if (tk % 720 === 0) {
         const ev = randOf(WORLD_EVENTS);
@@ -718,7 +629,7 @@ export default function App() {
           for (let i = 0; i < spawnCount; i++) {
             if (enemiesPerWaveRef.current < waveTargetRef.current) {
               enemiesPerWaveRef.current += 1;
-              enemiesRef.current = [...enemiesRef.current, spawnEnemy(st.wave, kxRef.current, kyRef.current, infiniteWorldRef.current, partySize)];
+              enemiesRef.current = [...enemiesRef.current, spawnEnemy(st.wave, kxRef.current, kyRef.current, infiniteWorldRef.current)];
             }
           }
         }
@@ -728,7 +639,7 @@ export default function App() {
       if (!bossActiveRef.current && waveEnemiesKilledRef.current >= waveTargetRef.current && enemiesRef.current.length === 0) {
         const nextWave = st.wave + 1;
         statsRef.current = { ...statsRef.current, wave: nextWave, level: Math.floor(nextWave / 3) + 1 };
-        waveTargetRef.current = getWaveTarget(nextWave, partySize);
+        waveTargetRef.current = getWaveTarget(nextWave);
         waveEnemiesKilledRef.current = 0;
         enemiesPerWaveRef.current = 0;
         setXpBar(0);
@@ -750,8 +661,7 @@ export default function App() {
 
       // Enemy movement & attacks
       const speedMult = st.wave % 2 === 0 ? 1.15 : 1;
-      enemiesRef.current = enemiesRef.current.map(en => {
-        if (en.hp <= 0) return en;
+      enemiesRef.current = enemiesRef.current.filter(en => en.hp > 0).map(en => {
         if (alienFreeze) {
           return { ...en, angle: en.angle + 0.02 };
         }
@@ -788,7 +698,7 @@ export default function App() {
           setShakeScreen(true); setTimeout(() => setShakeScreen(false), 250);
           addFloat(kxRef.current, kyRef.current - 30, `-${dmg}`, "#f44");
           attacked = true;
-          if (kolyaHpRef.current <= 0) { handlePlayerDeath(); return en; }
+          if (kolyaHpRef.current <= 0) { void endGame(); return en; }
         }
 
         let newProjs = projRef.current;
@@ -860,7 +770,7 @@ export default function App() {
           projRef.current = bossProjs;
         }
         if (bPhase >= 2 && tk % 150 === 0) {
-          enemiesRef.current = [...enemiesRef.current, spawnEnemy(st.wave, kxRef.current, kyRef.current, infiniteWorldRef.current, partySize)];
+          enemiesRef.current = [...enemiesRef.current, spawnEnemy(st.wave, kxRef.current, kyRef.current, infiniteWorldRef.current)];
         }
         bossRef.current = { ...bossRef.current, x: nbx, y: nby, phase: bPhase, rage, angle: bossRef.current.angle + 0.025 };
 
@@ -868,7 +778,7 @@ export default function App() {
           kolyaHpRef.current = Math.max(0, kolyaHpRef.current - 28);
           invincibleRef.current = 80;
           addFloat(kxRef.current, kyRef.current - 40, "-28 БОСС!", "#f00");
-          if (kolyaHpRef.current <= 0) handlePlayerDeath();
+          if (kolyaHpRef.current <= 0) void endGame();
         }
       }
 
@@ -932,7 +842,7 @@ export default function App() {
         if (dist(p.x, p.y, kxRef.current, kyRef.current) < 24 && invincibleRef.current <= 0) {
           kolyaHpRef.current = Math.max(0, kolyaHpRef.current - p.dmg);
           invincibleRef.current = 45;
-          if (kolyaHpRef.current <= 0) { handlePlayerDeath(); return false; }
+          if (kolyaHpRef.current <= 0) { void endGame(); return false; }
           return false;
         }
         if (sabHpRef.current > 0 && dist(p.x, p.y, sabXRef.current, sabYRef.current) < 20) {
@@ -1020,8 +930,6 @@ export default function App() {
         setWater(waterRef.current);
         setAlienCooldown(alienCooldownRef.current);
         setAlienFreezeLeft(alienFreezeTimerRef.current);
-        setAlienChargeUi(alienChargeAccumRef.current);
-        setAlienChargingUi(alienChargingRef.current);
         setIsAlien(isAlienRef.current);
         setSabHp(sabHpRef.current);
         setEnemies([...enemiesRef.current]);
@@ -1049,15 +957,6 @@ export default function App() {
     return (
       <MenuScreen
         onStartSolo={() => startGame()}
-        onStartOnline={(payload: GameStartPayload, spawnIdx) => {
-          onlineSpawnIndexRef.current = spawnIdx;
-          void startGame({
-            seed: payload.seed,
-            spawnX: payload.spawnX,
-            spawnY: payload.spawnY,
-            memberIdx: spawnIdx,
-          });
-        }}
         user={user}
         serverOnline={storage.isServerMode()}
         onAuthChange={refreshUser}
@@ -1069,17 +968,15 @@ export default function App() {
       <GameOverScreen
         stats={stats}
         onRestart={() => startGame()}
-        onMenu={() => { void import("./onlineRoom").then(m => m.OnlineRoom.leave()); setGameState("menu"); }}
+        onMenu={() => setGameState("menu")}
       />
     );
   }
 
   const hpPct = (kolyaHp / kolyaMaxHp) * 100;
   const sabHpPct = (sabHp / sabMaxHp) * 100;
-  const alienReady = alienCooldown <= 0 && alienFreezeLeft <= 0 && !alienChargingUi;
+  const alienReady = alienCooldown <= 0 && alienFreezeLeft <= 0;
   const alienPct = Math.max(0, Math.min(100, ((alienMaxCd - alienCooldown) / alienMaxCd) * 100));
-  const alienChargePct = Math.min(100, (alienChargeUi / 600) * 100);
-  const onlineActive = getActiveRoom() != null;
 
   return (
     <div
@@ -1117,19 +1014,17 @@ export default function App() {
             <div
               className="hud-bar-fill"
               style={{
-                width: `${alienChargingUi ? alienChargePct : alienFreezeLeft > 0 ? 100 : alienPct}%`,
-                background: alienChargingUi ? "#8f8" : alienFreezeLeft > 0 ? "#0fa" : alienReady ? "#0f8" : "#3a5",
+                width: `${alienFreezeLeft > 0 ? 100 : alienPct}%`,
+                background: alienFreezeLeft > 0 ? "#0fa" : alienReady ? "#0f8" : "#3a5",
               }}
             />
           </div>
-          <div style={{ color: alienReady || alienChargingUi ? "#0f8" : "#5a7", fontSize: 10 }}>
+          <div style={{ color: alienReady || alienFreezeLeft > 0 ? "#0f8" : "#5a7", fontSize: 10 }}>
             {alienFreezeLeft > 0
               ? `Гипноз ${(alienFreezeLeft / 60).toFixed(1)}с`
-              : alienChargingUi
-                ? `Заряд E ${(alienChargeUi / 60).toFixed(1)}/10с (отпусти)`
-                : alienReady
-                  ? "Зажми E — заряд до 10с"
-                  : `КД ${Math.ceil(alienCooldown / 60)}с`}
+              : alienReady
+                ? `E — гипноз ${alienMaxFreezeDisp}с`
+                : `КД ${Math.ceil(alienCooldown / 60)}с`}
           </div>
         </div>
 
@@ -1172,25 +1067,8 @@ export default function App() {
         </div>
 
         <div className="hud-panel hud-controls">
-          WASD · ЛКМ вода · Q · F заряд · Space подтяг (1с) · R ревайв · E · 1-4
+          WASD · ЛКМ вода · Q вонь · F заряд (≤2Л) · Space подтяг · E гипноз · 1-4
         </div>
-
-        {reviveHint && (
-          <div className="hud-panel" style={{ bottom: 200, left: "50%", transform: "translateX(-50%)", color: "#f88", fontSize: 13, fontWeight: "bold" }}>
-            {reviveHint}
-          </div>
-        )}
-
-        {onlineActive && (
-          <PeerCompass
-            peers={onlinePeersRef.current}
-            kx={kx}
-            ky={ky}
-            tick={worldRef.current.tick}
-            screenW={screenW}
-            screenH={screenH}
-          />
-        )}
 
         <Minimap worldRef={worldRef} infiniteWorldRef={infiniteWorldRef} />
 
