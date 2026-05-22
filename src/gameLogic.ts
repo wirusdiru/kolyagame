@@ -104,8 +104,8 @@ export function spawnItem(x: number, y: number, forceType?: ItemType): Item {
 export { isBossWave };
 
 export function getWaveTarget(wave: number, partySize = 1): number {
-  const base = 12 + wave * 4 + Math.floor(wave / 5) * 6;
-  return Math.floor(base * (1 + (partySize - 1) * 0.35));
+  const base = 32 + wave * 12 + Math.floor(wave / 3) * 14;
+  return Math.floor(base * (1 + (partySize - 1) * 0.4));
 }
 
 export function getEnemyPoints(type: Enemy["type"]): number {
@@ -141,7 +141,7 @@ export function applyUpgrades(
     waterCap: base.waterCap + up.waterCap * 12,
     speed: base.speed * (1 + up.speed * 0.04),
     stinkDmg: 5 + up.stinkPower * 2,
-    alienCd: Math.max(240, Math.floor(600 * (1 - up.alienCdReduce * 0.06))),
+    alienCd: Math.max(3000, Math.floor(3600 * (1 - up.alienCdReduce * 0.08))),
     alienDurRatio: 0.25 + alienDurBonus,
     sabDmg: 12 + up.sabDmg * 2,
     waterPerShot: Math.max(1.5, 3 - up.waterEfficiency * 0.2 - (abilities?.water_splash ? 1 : 0)),

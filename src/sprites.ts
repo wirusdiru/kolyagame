@@ -549,12 +549,37 @@ export function drawEnemy(ctx: CanvasRenderingContext2D, enemy: Enemy, tick: num
     ctx.fillText("LAG", 0, 5);
     ctx.globalAlpha = 1;
   } else if (t === "provider_golem") {
-    ctx.fillStyle = "#444";
-    ctx.fillRect(-18, -20, 36, 40);
-    ctx.fillStyle = "#f44";
-    ctx.font = "10px monospace";
+    const bob = Math.sin(tick * 0.06) * 2;
+    ctx.fillStyle = "#2a2a35";
+    ctx.fillRect(-20, -22 + bob, 40, 44);
+    ctx.fillStyle = "#1a1a22";
+    ctx.fillRect(-16, -18 + bob, 32, 12);
+    ctx.fillStyle = "#f55";
+    ctx.font = "bold 9px Consolas, monospace";
     ctx.textAlign = "center";
-    ctx.fillText("НЕТ", 0, 0);
+    ctx.fillText("НЕТ СЕТИ", 0, -10 + bob);
+    ctx.strokeStyle = "#f44";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(-10, 2 + bob);
+    ctx.lineTo(10, 22 + bob);
+    ctx.moveTo(10, 2 + bob);
+    ctx.lineTo(-10, 22 + bob);
+    ctx.stroke();
+    ctx.fillStyle = "#6688aa";
+    for (let i = 0; i < 3; i++) {
+      ctx.fillRect(-14 + i * 10, 26 + bob, 6, 4);
+    }
+    ctx.fillStyle = "#889";
+    ctx.beginPath();
+    ctx.arc(0, -28 + bob, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#5af";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, -28 + bob);
+    ctx.lineTo(Math.sin(tick * 0.08) * 6, -42 + bob);
+    ctx.stroke();
   } else if (t === "child_swarm") {
     ctx.fillStyle = "#ffcc88";
     ctx.beginPath();

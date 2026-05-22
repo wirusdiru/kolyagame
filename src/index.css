@@ -504,6 +504,70 @@ body {
 .minimap-legend .dot.cyan { background: #44ccff; }
 .minimap-legend .dot.red { background: #ff4466; }
 
+.peer-compass {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 14;
+}
+
+.peer-compass--empty {
+  top: auto;
+  left: 12px;
+  bottom: 200px;
+  right: auto;
+  padding: 8px 12px;
+  background: rgba(20, 30, 40, 0.85);
+  border: 1px solid #456;
+  border-radius: 8px;
+  font-size: 11px;
+  color: #f88;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.peer-compass--empty .peer-hint {
+  color: #888;
+  font-size: 9px;
+}
+
+.peer-arrow {
+  position: fixed;
+  width: 0;
+  height: 0;
+  border-left: 10px solid transparent;
+  border-right: 10px solid transparent;
+  border-bottom: 22px solid #44ccff;
+  filter: drop-shadow(0 0 6px #4cf);
+}
+
+.peer-arrow.stale {
+  border-bottom-color: #667;
+  filter: none;
+}
+
+.peer-arrow.near {
+  border-bottom-color: #6f6;
+}
+
+.peer-tag {
+  position: fixed;
+  padding: 4px 8px;
+  background: rgba(8, 20, 32, 0.9);
+  border: 1px solid rgba(68, 204, 255, 0.5);
+  border-radius: 6px;
+  font-size: 10px;
+  color: #cef;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.peer-tag b {
+  color: #6cf;
+  display: block;
+}
+
 .hud-controls {
   position: fixed;
   bottom: 28px;

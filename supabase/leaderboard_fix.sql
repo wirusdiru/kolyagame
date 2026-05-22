@@ -1,7 +1,30 @@
 -- Один игрок = одна строка в топе (лучший результат)
+-- Запускай целиком в Supabase SQL Editor
+
+-- 1) Удалить дубликаты: оставить лучший score на каждый ник (без учёта регистра)
+delete from leaderboard
+where id in (
+  select id
+  from (
+    select
+      id,
+      row_number() over (
+        partition by lower(trim(username))
+        order by score desc, created_at desc
+      ) as rn
+    from leaderboard
+  ) ranked
+  where rn > 1
+);
+
+-- 2) Привести ники к одному виду (как в add_score)
+update leaderboard set username = lower(trim(username));
+
+-- 3) Уникальный индекс по username
 alter table leaderboard drop constraint if exists leaderboard_username_key;
 alter table leaderboard add constraint leaderboard_username_key unique (username);
 
+-- 4) add_score: обновлять рекорд, а не плодить строки
 create or replace function add_score(p_username text, p_score int, p_wave int)
 returns void language plpgsql security definer set search_path = public as $$
 declare u text := lower(trim(p_username));

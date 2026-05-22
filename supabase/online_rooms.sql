@@ -17,3 +17,7 @@ create policy "online_rooms_public" on online_rooms
   for all using (true) with check (true);
 
 grant select, insert, update, delete on online_rooms to anon, authenticated;
+
+-- Точка спавна для коопа (если таблица уже есть — выполни отдельно):
+alter table online_rooms add column if not exists spawn_x double precision;
+alter table online_rooms add column if not exists spawn_y double precision;

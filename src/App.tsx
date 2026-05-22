@@ -24,6 +24,7 @@ import { emptyWorld, type WorldSnapshot } from "./worldRef";
 import { getActiveRoom, setOnRevivedListener } from "./onlineRoom";
 import type { GameStartPayload, PeerState } from "./onlineRoom";
 import Minimap from "./components/Minimap";
+import PeerCompass from "./components/PeerCompass";
 import MenuScreen from "./screens/MenuScreen";
 import PauseOverlay from "./screens/PauseOverlay";
 import GameOverScreen from "./screens/GameOverScreen";
@@ -59,7 +60,8 @@ export default function App() {
   const abilitiesRef = useRef<OwnedAbilities | null>(null);
   const waterPerShotRef = useRef(3);
   const stinkRadiusMultRef = useRef(1);
-  const alienDurRatioRef = useRef(0.25);
+  const alienFreezeTimerRef = useRef(0);
+  const isRefillingRef = useRef(false);
   const doubleShotRef = useRef(false);
   const sabFuryRef = useRef(false);
   const pullupHealBonusRef = useRef(0);
@@ -83,7 +85,8 @@ export default function App() {
   const [waterCap, setWaterCap] = useState(75);
   const [isAlien, setIsAlien] = useState(false);
   const [alienCooldown, setAlienCooldown] = useState(0);
-  const [alienMaxCd, setAlienMaxCd] = useState(600);
+  const [alienMaxCd, setAlienMaxCd] = useState(3600);
+  const [alienFreezeLeft, setAlienFreezeLeft] = useState(0);
   const [pullUps, setPullUps] = useState(0);
   const [pullupAnim, setPullupAnim] = useState(false);
   const [isRaining, setIsRaining] = useState(false);
@@ -141,7 +144,7 @@ export default function App() {
   const waterCapRef = useRef(75);
   const isAlienRef = useRef(false);
   const alienCooldownRef = useRef(0);
-  const alienMaxCdRef = useRef(600);
+  const alienMaxCdRef = useRef(3600);
   const sabHpRef = useRef(80);
   const invincibleRef = useRef(0);
   const sabInvincibleRef = useRef(0);
@@ -289,6 +292,7 @@ export default function App() {
   }, [gameState]);
 
   const fireWaterShot = (tx: number, ty: number) => {
+    if (keysRef.current.has("KeyF") || isRefillingRef.current) return;
     const cost = waterPerShotRef.current;
     if (waterRef.current < cost) {
       addFloat(kxRef.current, kyRef.current - 40, "ПУСТО! F — зарядка", "#f88");
@@ -317,6 +321,7 @@ export default function App() {
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     if (gameState !== "playing" || isDeadRef.current) return;
+    if (keysRef.current.has("KeyF") || isRefillingRef.current) return;
     if (waterRef.current < waterPerShotRef.current) return;
     const world = screenToWorld(e.clientX, e.clientY);
     fireWaterShot(world.x, world.y);
@@ -344,7 +349,6 @@ export default function App() {
     const applied = applyUpgrades({ maxHp: 90, waterCap: 115, speed: 3.8 }, up, ab);
     waterPerShotRef.current = applied.waterPerShot;
     stinkRadiusMultRef.current = applied.stinkRadiusMult;
-    alienDurRatioRef.current = applied.alienDurRatio;
     doubleShotRef.current = applied.doubleShot;
     sabFuryRef.current = applied.sabFury;
     pullupHealBonusRef.current = applied.pullupHealBonus;
@@ -354,12 +358,20 @@ export default function App() {
     const sp = infiniteWorldRef.current.getSpawn();
     const roomNow = getActiveRoom();
     const party = roomNow?.getPartySize() ?? 1;
-    const idx = o.memberIdx ?? onlineSpawnIndexRef.current;
     const baseX = o.spawnX ?? sp.x;
     const baseY = o.spawnY ?? sp.y;
-    const angle = (idx / Math.max(1, party)) * Math.PI * 2;
-    const cx = baseX + Math.cos(angle) * 42;
-    const cy = baseY + Math.sin(angle) * 42;
+    let cx = baseX;
+    let cy = baseY;
+    if (roomNow) {
+      if (roomNow.isHost) {
+        cx = baseX;
+        cy = baseY;
+      } else {
+        const slot = Math.max(1, roomNow.members.findIndex(m => m.username === roomNow.username));
+        cx = baseX + 50 + (slot - 1) * 38;
+        cy = baseY + 20;
+      }
+    }
 
     kxRef.current = cx; kyRef.current = cy;
     sabXRef.current = cx + 60; sabYRef.current = cy + 40;
@@ -369,8 +381,10 @@ export default function App() {
     waterRef.current = applied.waterCap;
     waterCapRef.current = applied.waterCap;
     isAlienRef.current = false;
+    alienFreezeTimerRef.current = 0;
     isRainingRef.current = false;
     alienCooldownRef.current = 0;
+    isRefillingRef.current = false;
     alienMaxCdRef.current = applied.alienCd;
     sabHpRef.current = 80;
     invincibleRef.current = 0;
@@ -473,11 +487,14 @@ export default function App() {
       }
 
       if (keys.has("KeyF") && !isDeadRef.current) {
-        const prev = waterRef.current;
-        waterRef.current = Math.min(waterCapRef.current, waterRef.current + 0.14);
-        if (prev < waterCapRef.current && waterRef.current >= waterCapRef.current - 0.5 && tk % 30 === 0) {
-          playSfx("refill");
+        if (waterRef.current <= 0.5) {
+          isRefillingRef.current = true;
+          const prev = waterRef.current;
+          waterRef.current = Math.min(waterCapRef.current, waterRef.current + 0.12);
+          if (prev < 0.5 && waterRef.current > 0.5 && tk % 20 === 0) playSfx("refill");
         }
+      } else {
+        isRefillingRef.current = false;
       }
 
       if (pullupCdRef.current > 0) pullupCdRef.current -= 1;
@@ -493,17 +510,17 @@ export default function App() {
         addFloat(kxRef.current, kyRef.current - 50, `ПОДТЯГ #${newPu}!`, "#ffdd00");
       }
 
-      if (keys.has("KeyE") && alienCooldownRef.current <= 0 && !isAlienRef.current) {
-        isAlienRef.current = true;
+      if (alienFreezeTimerRef.current > 0) alienFreezeTimerRef.current -= 1;
+      if (alienFreezeTimerRef.current <= 0) isAlienRef.current = false;
+
+      if (keys.has("KeyE") && alienCooldownRef.current <= 0 && alienFreezeTimerRef.current <= 0 && !isDeadRef.current) {
         alienCooldownRef.current = alienMaxCdRef.current;
+        alienFreezeTimerRef.current = 600;
         isAlienRef.current = true;
         statsRef.current = { ...statsRef.current, alienAbductions: statsRef.current.alienAbductions + 1 };
-        addFloat(kxRef.current, kyRef.current - 60, "КОЛЯ — ИНОПЛАНЕТЯНИН!", "#00ff88");
+        addFloat(kxRef.current, kyRef.current - 60, "ГИПНОЗ 10 СЕК!", "#00ff88");
         playSfx("alien");
-        enemiesRef.current = enemiesRef.current.map(en => ({ ...en, stun: 150 }));
-      }
-      if (isAlienRef.current && alienCooldownRef.current <= alienMaxCdRef.current * (1 - alienDurRatioRef.current)) {
-        isAlienRef.current = false;
+        enemiesRef.current = enemiesRef.current.map(en => ({ ...en, stun: Math.max(en.stun, 600) }));
       }
       if (alienCooldownRef.current > 0) alienCooldownRef.current -= 1;
 
@@ -607,7 +624,7 @@ export default function App() {
       }
 
       const room = getActiveRoom();
-      if (room && tk % 8 === 0) {
+      if (room && tk % 4 === 0) {
         room.sendPosition(
           kxRef.current, kyRef.current, kolyaHpRef.current, kolyaMaxHpRef.current, tk,
           isDeadRef.current, kolyaSkinRef.current,
@@ -645,8 +662,8 @@ export default function App() {
       const doubleSpawn = st.wave % 3 === 0;
       if (!bossActiveRef.current) {
         spawnTimerRef.current += 1;
-        const spawnInterval = Math.max(38, 165 - st.wave * 6);
-        const spawnCount = doubleSpawn ? 3 : st.wave > 4 ? 2 : 1;
+        const spawnInterval = Math.max(18, 95 - st.wave * 4);
+        const spawnCount = doubleSpawn ? 5 : st.wave > 2 ? 4 : 3;
         if (spawnTimerRef.current >= spawnInterval && enemiesPerWaveRef.current < waveTargetRef.current) {
           spawnTimerRef.current = 0;
           for (let i = 0; i < spawnCount; i++) {
@@ -680,11 +697,15 @@ export default function App() {
         }
       }
 
+      const alienFreeze = alienFreezeTimerRef.current > 0;
+
       // Enemy movement & attacks
       const speedMult = st.wave % 2 === 0 ? 1.15 : 1;
       enemiesRef.current = enemiesRef.current.map(en => {
         if (en.hp <= 0) return en;
-        if (en.stun > 0) return { ...en, stun: en.stun - 1, angle: en.angle + 0.15 };
+        if (alienFreeze || en.stun > 0) {
+          return { ...en, stun: alienFreeze ? Math.max(en.stun, 2) : en.stun - 1, angle: en.angle + 0.08 };
+        }
 
         const dx = kxRef.current - en.x, dy = kyRef.current - en.y;
         const dl = Math.sqrt(dx * dx + dy * dy) || 1;
@@ -751,7 +772,7 @@ export default function App() {
       if (sabInvincibleRef.current > 0) sabInvincibleRef.current -= 1;
 
       // Boss logic
-      if (bossRef.current && bossActiveRef.current) {
+      if (bossRef.current && bossActiveRef.current && !alienFreeze) {
         const b = bossRef.current;
         const bPhase = b.hp > b.maxHp * 0.66 ? 1 : b.hp > b.maxHp * 0.33 ? 2 : 3;
         const rage = b.hp < b.maxHp * 0.2;
@@ -800,9 +821,12 @@ export default function App() {
       }
 
       // Projectiles
-      let updatedProjs = projRef.current.map(p => ({
-        ...p, x: p.x + p.vx, y: p.y + p.vy, life: p.life - 1,
-      })).filter(p => {
+      let updatedProjs = projRef.current.map(p => {
+        if (alienFreeze && (p.owner === "enemy" || p.owner === "boss")) {
+          return { ...p, life: p.life - 1 };
+        }
+        return { ...p, x: p.x + p.vx, y: p.y + p.vy, life: p.life - 1 };
+      }).filter(p => {
         if (p.life <= 0) return false;
         return dist(p.x, p.y, kxRef.current, kyRef.current) < 1400;
       });
@@ -943,6 +967,7 @@ export default function App() {
         setKolyaHp(kolyaHpRef.current);
         setWater(waterRef.current);
         setAlienCooldown(alienCooldownRef.current);
+        setAlienFreezeLeft(alienFreezeTimerRef.current);
         setIsAlien(isAlienRef.current);
         setSabHp(sabHpRef.current);
         setEnemies([...enemiesRef.current]);
@@ -997,8 +1022,9 @@ export default function App() {
 
   const hpPct = (kolyaHp / kolyaMaxHp) * 100;
   const sabHpPct = (sabHp / sabMaxHp) * 100;
-  const alienReady = alienCooldown <= 0;
+  const alienReady = alienCooldown <= 0 && alienFreezeLeft <= 0;
   const alienPct = Math.max(0, Math.min(100, ((alienMaxCd - alienCooldown) / alienMaxCd) * 100));
+  const onlineActive = getActiveRoom() != null;
 
   return (
     <div
@@ -1030,10 +1056,16 @@ export default function App() {
           <div style={{ color: "#fff", fontSize: 10 }}>HP {kolyaHp}/{kolyaMaxHp}</div>
           <div className="hud-bar" style={{ width: 200, height: 8 }}><div className="hud-bar-fill" style={{ width: `${(water / waterCap) * 100}%`, background: "#48f" }} /></div>
           <div style={{ color: water >= waterPerShotRef.current ? "#8af" : "#f66", fontSize: 10 }}>
-            Вода {Math.round(water)}Л/{waterCap}Л {water < waterPerShotRef.current ? "(F)" : ""}
+            Вода {Math.round(water)}Л/{waterCap}Л {water <= 0.5 ? "(F — пусто)" : ""}
           </div>
           <div className="hud-bar" style={{ width: 200, height: 6 }}><div className="hud-bar-fill" style={{ width: `${alienPct}%`, background: alienReady ? "#0f8" : "#3a5" }} /></div>
-          <div style={{ color: alienReady ? "#0f8" : "#5a7", fontSize: 10 }}>{alienReady ? "E — инопланетянин" : `КД ${Math.ceil(alienCooldown / 60)}с`}</div>
+          <div style={{ color: alienReady ? "#0f8" : "#5a7", fontSize: 10 }}>
+            {alienFreezeLeft > 0
+              ? `Гипноз ${Math.ceil(alienFreezeLeft / 60)}с`
+              : alienReady
+                ? "E — гипноз врагов 10с"
+                : `КД ${Math.ceil(alienCooldown / 60)}с`}
+          </div>
         </div>
 
         <div className="hud-panel" style={{ top: 12, left: 240 }}>
@@ -1082,6 +1114,17 @@ export default function App() {
           <div className="hud-panel" style={{ bottom: 200, left: "50%", transform: "translateX(-50%)", color: "#f88", fontSize: 13, fontWeight: "bold" }}>
             {reviveHint}
           </div>
+        )}
+
+        {onlineActive && (
+          <PeerCompass
+            peers={onlinePeersRef.current}
+            kx={kx}
+            ky={ky}
+            tick={worldRef.current.tick}
+            screenW={screenW}
+            screenH={screenH}
+          />
         )}
 
         <Minimap worldRef={worldRef} infiniteWorldRef={infiniteWorldRef} />

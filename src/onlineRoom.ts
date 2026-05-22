@@ -27,6 +27,8 @@ export interface RoomSnapshot {
   started: boolean;
   updatedAt: number;
   peers: Record<string, PeerState>;
+  spawnX?: number;
+  spawnY?: number;
 }
 
 type RoomListener = (room: RoomSnapshot) => void;
@@ -94,6 +96,8 @@ async function fetchRoomFromDb(code: string): Promise<RoomSnapshot | null> {
     seed: data.game_seed != null ? Number(data.game_seed) : null,
     started: Boolean(data.started),
     updatedAt: new Date(data.updated_at as string).getTime(),
+    spawnX: data.spawn_x != null ? Number(data.spawn_x) : undefined,
+    spawnY: data.spawn_y != null ? Number(data.spawn_y) : undefined,
     peers: {},
   };
 }
@@ -107,6 +111,8 @@ async function persistRoomToDb(snap: RoomSnapshot): Promise<void> {
     members: snap.members,
     game_seed: snap.seed,
     started: snap.started,
+    spawn_x: snap.spawnX ?? null,
+    spawn_y: snap.spawnY ?? null,
     updated_at: new Date().toISOString(),
   });
 }
@@ -172,8 +178,8 @@ export class OnlineRoom {
     if (this.snapshot.started && this.snapshot.seed != null) {
       cb({
         seed: this.snapshot.seed,
-        spawnX: (this.snapshot as RoomSnapshot & { spawnX?: number }).spawnX ?? 24,
-        spawnY: (this.snapshot as RoomSnapshot & { spawnY?: number }).spawnY ?? 24,
+        spawnX: this.snapshot.spawnX ?? 24,
+        spawnY: this.snapshot.spawnY ?? 24,
       });
     }
     return () => this.startListeners.delete(cb);
@@ -214,13 +220,14 @@ export class OnlineRoom {
       members: [...new Set([...remote.members, remote.host, this.snapshot.host].filter(Boolean))],
       seed: remote.seed ?? this.snapshot.seed,
       started: remote.started || this.snapshot.started,
+      spawnX: remote.spawnX ?? this.snapshot.spawnX,
+      spawnY: remote.spawnY ?? this.snapshot.spawnY,
       updatedAt: remote.updatedAt,
     };
     writeRoom(this.snapshot);
     this.emitRoom();
     if (!wasStarted && this.snapshot.started && this.snapshot.seed != null) {
-      const s = remote as RoomSnapshot & { spawnX?: number; spawnY?: number };
-      this.emitStart(this.snapshot.seed, s.spawnX, s.spawnY);
+      this.emitStart(this.snapshot.seed, this.snapshot.spawnX, this.snapshot.spawnY);
     }
   }
 
@@ -266,6 +273,8 @@ export class OnlineRoom {
     }
     if (data.started != null) this.snapshot.started = data.started;
     if (data.seed != null) this.snapshot.seed = data.seed;
+    if (data.spawnX != null) this.snapshot.spawnX = data.spawnX;
+    if (data.spawnY != null) this.snapshot.spawnY = data.spawnY;
 
     void this.pushState();
     this.emitRoom();
@@ -455,7 +464,8 @@ export class OnlineRoom {
     const seed = Date.now() + Math.floor(Math.random() * 1_000_000);
     this.snapshot.started = true;
     this.snapshot.seed = seed;
-    Object.assign(this.snapshot, { spawnX, spawnY });
+    this.snapshot.spawnX = spawnX;
+    this.snapshot.spawnY = spawnY;
     void this.pushState();
     this.broadcast({
       type: "game_start", seed, spawnX, spawnY,
@@ -472,7 +482,7 @@ export class OnlineRoom {
   ) {
     const peer: PeerState = { username: this.username, x, y, hp, maxHp, tick, isDead, skinId };
     this.snapshot.peers[this.username] = peer;
-    if (tick % 4 === 0) {
+    if (tick % 2 === 0) {
       this.broadcast({ type: "peer", peers: { [this.username]: peer } });
     }
   }
