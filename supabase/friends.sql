@@ -25,7 +25,8 @@ create table if not exists friend_requests (
 create index if not exists friend_requests_to_idx on friend_requests (to_username, status);
 
 alter table friend_requests enable row level security;
-create policy "no direct friend_requests" on friend_requests for all using (false);
+drop policy if exists "no direct friend_requests" on public.friend_requests;
+create policy "no direct friend_requests" on public.friend_requests for all using (false);
 
 create or replace function public.set_presence(
   p_username text, p_password_hash text, p_is_playing boolean
