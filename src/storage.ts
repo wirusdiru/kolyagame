@@ -460,7 +460,10 @@ export async function sendFriendRequest(friendName: string): Promise<{ ok: boole
   return { ok: true };
 }
 
-async function syncFriendRequestsFromCloud(session: Session): Promise<void> {
+async function syncFriendRequestsFromCloud(
+  session: Session,
+  preserveFriends?: FriendEntry[],
+): Promise<void> {
   const sb = await getSupabase();
   if (!sb) return;
   const { data } = await sb.rpc("get_friend_requests", {
@@ -479,7 +482,22 @@ async function syncFriendRequestsFromCloud(session: Session): Promise<void> {
     username: r.username,
     at: r.at ?? new Date().toISOString(),
   }));
+  if (preserveFriends && preserveFriends.length > 0) {
+    u.friends = preserveFriends;
+  }
   await saveUserProfile(u);
+}
+
+function addFriendToProfile(profile: UserProfile, friendUsername: string): UserProfile {
+  const name = friendUsername.trim();
+  const key = name.toLowerCase();
+  if (!name || hasFriend(profile, name)) return profile;
+  return {
+    ...profile,
+    friends: [...profile.friends, { username: name, addedAt: new Date().toISOString() }],
+    friendRequestsIn: profile.friendRequestsIn.filter(r => r.username.toLowerCase() !== key),
+    friendRequestsOut: profile.friendRequestsOut.filter(r => r.username.toLowerCase() !== key),
+  };
 }
 
 export async function acceptFriendRequest(fromName: string): Promise<{ ok: boolean; error?: string }> {
@@ -505,9 +523,14 @@ export async function acceptFriendRequest(fromName: string): Promise<{ ok: boole
     if (error) return { ok: false, error: mapRpcError(error.message) };
     const res = data as { ok: boolean; error?: string };
     if (!res.ok) return { ok: false, error: res.error ?? "Ошибка" };
-    const fresh = await cloudFetchProfile(session);
-    if (fresh) await saveUserProfile(fresh);
-    await syncFriendRequestsFromCloud(session);
+    let me = await fetchCurrentUser();
+    if (me) {
+      me = addFriendToProfile(me, fromName);
+      await saveUserProfile(me);
+      await syncFriendRequestsFromCloud(session, me.friends);
+    } else {
+      await syncFriendRequestsFromCloud(session);
+    }
     return { ok: true };
   }
 
@@ -515,19 +538,10 @@ export async function acceptFriendRequest(fromName: string): Promise<{ ok: boole
   const me = normalizeProfile(users[u.username] ?? u);
   const other = users[from];
   if (!other) return { ok: false, error: "Игрок не найден" };
-  const at = new Date().toISOString();
-  me.friendRequestsIn = me.friendRequestsIn.filter(r => r.username.toLowerCase() !== from);
-  me.friendRequestsOut = me.friendRequestsOut.filter(r => r.username.toLowerCase() !== from);
-  other.friendRequestsOut = (other.friendRequestsOut ?? []).filter(r => r.username.toLowerCase() !== u.username);
-  other.friendRequestsIn = (other.friendRequestsIn ?? []).filter(r => r.username.toLowerCase() !== u.username);
-  if (!hasFriend(me, fromName)) {
-    me.friends.push({ username: other.username, addedAt: at });
-  }
-  if (!hasFriend(other, u.username)) {
-    other.friends.push({ username: me.username, addedAt: at });
-  }
-  users[u.username] = me;
-  users[from] = normalizeProfile(other);
+  const meUpdated = addFriendToProfile(me, other.username);
+  const otherUpdated = addFriendToProfile(normalizeProfile(other), me.username);
+  users[u.username] = meUpdated;
+  users[from] = otherUpdated;
   saveUsers(users);
   return { ok: true };
 }

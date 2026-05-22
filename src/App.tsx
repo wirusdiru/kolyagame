@@ -6,7 +6,6 @@ import type {
 import {
   KOLAY_NICKNAMES, STINK_MESSAGES, INTERNET_MESSAGES,
   SABCHAK_PHRASES, POCKET_STUFF, BOSS_NAMES, BIOME_NAMES, WORLD_EVENTS,
-  WATER_REFILL_BELOW,
 } from "./constants";
 import { playSfx } from "./audio";
 import {
@@ -240,13 +239,11 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameState]);
 
-  const canRefillWater = () => waterRef.current <= WATER_REFILL_BELOW + 0.01;
-
   const fireWaterShot = (tx: number, ty: number) => {
     const cost = waterPerShotRef.current;
-    if (keysRef.current.has("KeyF") && canRefillWater()) return;
+    if (keysRef.current.has("KeyF")) return;
     if (waterRef.current + 0.02 < cost) {
-      addFloat(kxRef.current, kyRef.current - 40, `Мало воды! F при ≤${WATER_REFILL_BELOW}Л`, "#f88");
+      addFloat(kxRef.current, kyRef.current - 40, "Мало воды! F — зарядка", "#f88");
       return;
     }
     const dx = tx - kxRef.current, dy = ty - kyRef.current;
@@ -272,7 +269,7 @@ export default function App() {
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     if (gameState !== "playing" || isDeadRef.current) return;
-    if (keysRef.current.has("KeyF") && waterRef.current <= WATER_REFILL_BELOW + 0.01) return;
+    if (keysRef.current.has("KeyF")) return;
     if (waterRef.current + 0.02 < waterPerShotRef.current) return;
     const world = screenToWorld(e.clientX, e.clientY);
     fireWaterShot(world.x, world.y);
@@ -414,15 +411,11 @@ export default function App() {
         kxRef.current = nx; kyRef.current = ny;
       }
 
-      if (keys.has("KeyF") && !isDeadRef.current && waterRef.current <= WATER_REFILL_BELOW) {
-        if (waterRef.current < waterCapRef.current - 0.01) {
-          const prev = waterRef.current;
-          waterRef.current = Math.min(waterCapRef.current, waterRef.current + 0.45);
-          if (prev <= WATER_REFILL_BELOW && waterRef.current > WATER_REFILL_BELOW && tk % 15 === 0) {
-            playSfx("refill");
-          }
-          if (tk % 4 === 0) setWater(waterRef.current);
-        }
+      if (keys.has("KeyF") && !isDeadRef.current && waterRef.current < waterCapRef.current - 0.01) {
+        const prev = waterRef.current;
+        waterRef.current = Math.min(waterCapRef.current, waterRef.current + 0.55);
+        if (prev < 1 && waterRef.current >= 1 && tk % 15 === 0) playSfx("refill");
+        if (tk % 4 === 0) setWater(waterRef.current);
       }
 
       if (pullupCdRef.current > 0) pullupCdRef.current -= 1;
@@ -1013,7 +1006,7 @@ export default function App() {
           <div style={{ color: "#fff", fontSize: 10 }}>HP {kolyaHp}/{kolyaMaxHp}</div>
           <div className="hud-bar" style={{ width: 200, height: 8 }}><div className="hud-bar-fill" style={{ width: `${(water / waterCap) * 100}%`, background: "#48f" }} /></div>
           <div style={{ color: water >= waterPerShotRef.current ? "#8af" : "#f66", fontSize: 10 }}>
-            Вода {Math.round(water)}Л/{waterCap}Л {water <= 2 ? "(F — ≤2Л)" : ""}
+            Вода {Math.round(water)}Л/{waterCap}Л {water < waterCap - 1 ? "(F — зарядка)" : ""}
           </div>
           <div className="hud-bar" style={{ width: 200, height: 6 }}>
             <div
@@ -1057,7 +1050,7 @@ export default function App() {
         )}
 
         <div className="hud-panel hud-controls">
-          WASD · ЛКМ вода · Q вонь · F заряд (≤{WATER_REFILL_BELOW}Л) · Space подтяг · E гипноз · лут сразу
+          WASD · ЛКМ вода · Q вонь · F заряд до полного бака · Space подтяг · E гипноз · лут сразу
         </div>
 
         <Minimap worldRef={worldRef} infiniteWorldRef={infiniteWorldRef} />

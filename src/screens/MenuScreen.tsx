@@ -168,7 +168,7 @@ export default function MenuScreen({ onStartSolo, user, serverOnline, onAuthChan
             <button type="button" className="menu-play-btn" onClick={onStartSolo} disabled={loading}>
               ИГРАТЬ ЗА КОЛЮ
             </button>
-            <p className="menu-hint">Бесконечный мир · F вода (≤3.5Л) · E гипноз · Q вонь · лут сразу в руки</p>
+            <p className="menu-hint">Бесконечный мир · F заряд воды · E гипноз · Q вонь · лут сразу в руки</p>
             {!user && (
               <p className="menu-hint" style={{ color: "#c96" }}>Без входа монеты не сохраняются — вкладка «Вход»</p>
             )}

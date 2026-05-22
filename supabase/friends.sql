@@ -92,12 +92,16 @@ begin
   my_meta := coalesce(my_up->'__meta', '{}'::jsonb);
   their_meta := coalesce(their_up->'__meta', '{}'::jsonb);
 
-  my_meta := jsonb_set(my_meta, '{friends}',
-    coalesce(my_meta->'friends', '[]'::jsonb) || jsonb_build_array(jsonb_build_object('username', f, 'addedAt', now()::text))
-  );
-  their_meta := jsonb_set(their_meta, '{friends}',
-    coalesce(their_meta->'friends', '[]'::jsonb) || jsonb_build_array(jsonb_build_object('username', u, 'addedAt', now()::text))
-  );
+  if not coalesce(my_meta->'friends', '[]'::jsonb) @> jsonb_build_array(jsonb_build_object('username', f)) then
+    my_meta := jsonb_set(my_meta, '{friends}',
+      coalesce(my_meta->'friends', '[]'::jsonb) || jsonb_build_array(jsonb_build_object('username', f, 'addedAt', now()::text))
+    );
+  end if;
+  if not coalesce(their_meta->'friends', '[]'::jsonb) @> jsonb_build_array(jsonb_build_object('username', u)) then
+    their_meta := jsonb_set(their_meta, '{friends}',
+      coalesce(their_meta->'friends', '[]'::jsonb) || jsonb_build_array(jsonb_build_object('username', u, 'addedAt', now()::text))
+    );
+  end if;
 
   update profiles set upgrades = jsonb_set(my_up, '{__meta}', my_meta) where username = u;
   update profiles set upgrades = jsonb_set(their_up, '{__meta}', their_meta) where username = f;
