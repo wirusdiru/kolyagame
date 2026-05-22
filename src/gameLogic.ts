@@ -177,9 +177,9 @@ export function emptyStats(): GameStats {
 
 /** Монеты за забег — урезано, чтобы не откупать магазин за 1–2 игры */
 export function coinsForRun(score: number, wave: number): number {
-  const fromScore = Math.floor(score / 28);
-  const fromWave = Math.min(18, Math.floor(wave * 1.1));
-  return Math.max(4, Math.min(85, fromScore + fromWave));
+  const fromScore = Math.floor(score / 16);
+  const fromWave = Math.min(35, Math.floor(wave * 2));
+  return Math.max(10, Math.min(160, fromScore + fromWave));
 }
 
 export function getWaveModifier(wave: number): string {

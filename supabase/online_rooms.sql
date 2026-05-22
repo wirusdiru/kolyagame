@@ -21,3 +21,7 @@ grant select, insert, update, delete on online_rooms to anon, authenticated;
 -- Точка спавна для коопа (если таблица уже есть — выполни отдельно):
 alter table online_rooms add column if not exists spawn_x double precision;
 alter table online_rooms add column if not exists spawn_y double precision;
+alter table online_rooms add column if not exists peers jsonb not null default '{}'::jsonb;
+
+-- Удалить старые комнаты (старше 3 часов). Можно запускать вручную или по cron:
+-- delete from online_rooms where updated_at < now() - interval '3 hours';

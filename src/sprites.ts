@@ -465,8 +465,8 @@ export function drawEnemy(ctx: CanvasRenderingContext2D, enemy: Enemy, tick: num
   ctx.save();
   ctx.translate(enemy.x, enemy.y);
   if (enemy.stun > 0) {
-    ctx.filter = "brightness(2) hue-rotate(90deg)";
-    ctx.rotate(enemy.angle);
+    ctx.globalAlpha = 0.75;
+    ctx.rotate(enemy.angle * 0.5);
   }
 
   const t = enemy.type;

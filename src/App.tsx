@@ -302,7 +302,7 @@ export default function App() {
     if (keysRef.current.has("KeyF") || isRefillingRef.current) return;
     const cost = waterPerShotRef.current;
     if (waterRef.current < cost) {
-      addFloat(kxRef.current, kyRef.current - 40, "ПУСТО! F — зарядка", "#f88");
+      addFloat(kxRef.current, kyRef.current - 40, "Мало воды! F при ≤2Л", "#f88");
       return;
     }
     const dx = tx - kxRef.current, dy = ty - kyRef.current;
@@ -497,11 +497,11 @@ export default function App() {
       }
 
       if (keys.has("KeyF") && !isDeadRef.current) {
-        if (waterRef.current <= 0.5) {
+        if (waterRef.current <= 2) {
           isRefillingRef.current = true;
           const prev = waterRef.current;
           waterRef.current = Math.min(waterCapRef.current, waterRef.current + 0.12);
-          if (prev < 0.5 && waterRef.current > 0.5 && tk % 20 === 0) playSfx("refill");
+          if (prev <= 2 && waterRef.current > 2 && tk % 20 === 0) playSfx("refill");
         }
       } else {
         isRefillingRef.current = false;
@@ -527,9 +527,6 @@ export default function App() {
         const sec = (chargeTicks / 60).toFixed(1);
         addFloat(kxRef.current, kyRef.current - 60, `ГИПНОЗ ${sec}с!`, "#00ff88");
         playSfx("alien");
-        enemiesRef.current = enemiesRef.current.map(en => ({
-          ...en, stun: Math.max(en.stun, chargeTicks),
-        }));
       };
 
       if (alienFreezeTimerRef.current > 0) {
@@ -563,18 +560,32 @@ export default function App() {
       if (alienCooldownRef.current > 0) alienCooldownRef.current -= 1;
 
       stinkActiveRef.current = keys.has("KeyQ");
-      if (stinkActiveRef.current && tk % 12 === 0) {
-        const sr = (130 + st.wave * 5) * stinkRadiusMultRef.current;
+      if (stinkActiveRef.current && tk % 10 === 0) {
+        const sr = (110 + st.wave * 4) * stinkRadiusMultRef.current;
         if (regenStinkRef.current > 0 && tk % 24 === 0) {
           kolyaHpRef.current = Math.min(kolyaMaxHpRef.current, kolyaHpRef.current + regenStinkRef.current);
         }
+        const stinkKilled: number[] = [];
         enemiesRef.current = enemiesRef.current.map(en => {
-          if (dist(en.x, en.y, kxRef.current, kyRef.current) < sr) {
-            addFloat(en.x, en.y - 20, `-${stinkPowerRef.current} ВОНЬ`, "#aaff44");
-            return { ...en, hp: en.hp - stinkPowerRef.current };
+          if (en.hp <= 0) return en;
+          if (dist(en.x, en.y, kxRef.current, kyRef.current) >= sr) return en;
+          const hp = en.hp - stinkPowerRef.current;
+          if (hp <= 0) {
+            stinkKilled.push(en.id);
+            const pts = getEnemyPoints(en.type);
+            statsRef.current = {
+              ...statsRef.current,
+              score: statsRef.current.score + pts,
+              enemiesKilled: statsRef.current.enemiesKilled + 1,
+            };
+            waveEnemiesKilledRef.current += 1;
+            return { ...en, hp: 0 };
           }
-          return en;
-        });
+          return { ...en, hp };
+        }).filter(en => en.hp > 0);
+        if (stinkKilled.length > 0 && tk % 20 === 0) {
+          addFloat(kxRef.current, kyRef.current - 45, `ВОНЬ ×${stinkKilled.length}`, "#aaff44");
+        }
         if (bossRef.current && dist(bossRef.current.x, bossRef.current.y, kxRef.current, kyRef.current) < sr + 50) {
           bossRef.current = { ...bossRef.current, hp: bossRef.current.hp - Math.floor(stinkPowerRef.current * 0.7) };
         }
@@ -662,7 +673,7 @@ export default function App() {
       }
 
       const room = getActiveRoom();
-      if (room && tk % 4 === 0) {
+      if (room && tk % 3 === 0) {
         room.sendPosition(
           kxRef.current, kyRef.current, kolyaHpRef.current, kolyaMaxHpRef.current, tk,
           isDeadRef.current, kolyaSkinRef.current,
@@ -741,8 +752,11 @@ export default function App() {
       const speedMult = st.wave % 2 === 0 ? 1.15 : 1;
       enemiesRef.current = enemiesRef.current.map(en => {
         if (en.hp <= 0) return en;
-        if (alienFreeze || en.stun > 0) {
-          return { ...en, stun: alienFreeze ? Math.max(en.stun, 2) : en.stun - 1, angle: en.angle + 0.08 };
+        if (alienFreeze) {
+          return { ...en, angle: en.angle + 0.02 };
+        }
+        if (en.stun > 0) {
+          return { ...en, stun: en.stun - 1, angle: en.angle + 0.05 };
         }
 
         const dx = kxRef.current - en.x, dy = kyRef.current - en.y;
@@ -1097,7 +1111,7 @@ export default function App() {
           <div style={{ color: "#fff", fontSize: 10 }}>HP {kolyaHp}/{kolyaMaxHp}</div>
           <div className="hud-bar" style={{ width: 200, height: 8 }}><div className="hud-bar-fill" style={{ width: `${(water / waterCap) * 100}%`, background: "#48f" }} /></div>
           <div style={{ color: water >= waterPerShotRef.current ? "#8af" : "#f66", fontSize: 10 }}>
-            Вода {Math.round(water)}Л/{waterCap}Л {water <= 0.5 ? "(F — пусто)" : ""}
+            Вода {Math.round(water)}Л/{waterCap}Л {water <= 2 ? "(F — ≤2Л)" : ""}
           </div>
           <div className="hud-bar" style={{ width: 200, height: 6 }}>
             <div
