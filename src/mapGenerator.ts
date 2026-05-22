@@ -11,104 +11,134 @@ export interface MapData {
   grid: TileGrid;
   spawnX: number;
   spawnY: number;
+  seed: number;
 }
 
 function seededRandom(seed: number) {
-  let s = seed;
+  let s = Math.abs(Math.floor(seed)) % 2147483646 + 1;
   return () => {
     s = (s * 16807 + 0) % 2147483647;
     return (s - 1) / 2147483646;
   };
 }
 
-function noise2D(tx: number, ty: number, seed: number): number {
-  const r = seededRandom(tx * 127 + ty * 311 + seed);
-  const r2 = seededRandom(tx * 53 + ty * 97 + seed + 7);
-  return r() * 0.6 + r2() * 0.4;
+/** Слой шума 0..1 */
+function noise(tx: number, ty: number, seed: number): number {
+  const r = seededRandom(tx * 374761 + ty * 668265 + seed * 982451);
+  return r();
+}
+
+function fbm(tx: number, ty: number, seed: number, scale: number): number {
+  let v = 0;
+  let amp = 1;
+  let freq = scale;
+  let sum = 0;
+  for (let i = 0; i < 4; i++) {
+    v += noise(tx * freq, ty * freq, seed + i * 7919) * amp;
+    sum += amp;
+    amp *= 0.5;
+    freq *= 2.1;
+  }
+  return v / sum;
 }
 
 function findSpawnPoint(grid: TileGrid, cols: number, rows: number): { x: number; y: number } {
   const cx = Math.floor(cols / 2);
   const cy = Math.floor(rows / 2);
+  const clearR = 7;
 
-  for (let r = 0; r < 18; r++) {
+  for (let oy = -clearR; oy <= clearR; oy++) {
+    for (let ox = -clearR; ox <= clearR; ox++) {
+      const tx = cx + ox;
+      const ty = cy + oy;
+      if (tx < 1 || ty < 1 || tx >= cols - 1 || ty >= rows - 1) continue;
+      grid[ty][tx] = ox * ox + oy * oy < clearR * clearR ? "path" : "grass";
+    }
+  }
+
+  for (let r = 0; r < 20; r++) {
     for (let dy = -r; dy <= r; dy++) {
       for (let dx = -r; dx <= r; dx++) {
         const tx = cx + dx;
         const ty = cy + dy;
-        if (tx < 2 || ty < 2 || tx >= cols - 2 || ty >= rows - 2) continue;
-        if (grid[ty][tx] !== "grass" && grid[ty][tx] !== "path") continue;
+        if (tx < 3 || ty < 3 || tx >= cols - 3 || ty >= rows - 3) continue;
+        const t = grid[ty][tx];
+        if (t === "water" || t === "tree" || t === "rock") continue;
         let ok = true;
         for (let oy = -2; oy <= 2 && ok; oy++) {
           for (let ox = -2; ox <= 2; ox++) {
-            const t = grid[ty + oy]?.[tx + ox];
-            if (t === "water" || t === "tree" || t === "rock") { ok = false; break; }
+            const nt = grid[ty + oy]?.[tx + ox];
+            if (nt === "water" || nt === "tree" || nt === "rock") { ok = false; break; }
           }
         }
         if (ok) {
-          for (let oy = -2; oy <= 2; oy++) {
-            for (let ox = -2; ox <= 2; ox++) {
-              if (grid[ty + oy]?.[tx + ox] !== "water") grid[ty + oy][tx + ox] = "grass";
-            }
-          }
           return { x: tx * TILE_SIZE + TILE_SIZE / 2, y: ty * TILE_SIZE + TILE_SIZE / 2 };
         }
       }
     }
   }
-  return { x: WORLD_W / 2, y: WORLD_H / 2 };
+  return { x: cx * TILE_SIZE + TILE_SIZE / 2, y: cy * TILE_SIZE + TILE_SIZE / 2 };
 }
 
-/** Разнообразная карта: леса, озёра, тропинки, камни — не кольцо воды вокруг спавна */
-export function generateMap(seed = 42): MapData {
+/**
+ * Разнообразный мир: луга, леса, камни, тропинки, редкие озёра (~4–6% воды).
+ * Каждый seed — другая карта.
+ */
+export function generateMap(seed?: number): MapData {
+  const s = seed ?? Math.floor(Math.random() * 1_000_000_000);
   const cols = Math.ceil(WORLD_W / TILE_SIZE);
   const rows = Math.ceil(WORLD_H / TILE_SIZE);
   const grid: TileGrid = [];
-  const tiles: MapTile[] = [];
 
   for (let ty = 0; ty < rows; ty++) {
     grid[ty] = [];
     for (let tx = 0; tx < cols; tx++) {
-      const n = noise2D(tx * 0.09, ty * 0.09, seed);
-      const n2 = noise2D(tx * 0.17, ty * 0.17, seed + 99);
-      const n3 = noise2D(tx * 0.25, ty * 0.25, seed + 50);
+      const elev = fbm(tx, ty, s, 0.012);
+      const moist = fbm(tx, ty, s + 111, 0.015);
+      const detail = fbm(tx, ty, s + 222, 0.045);
+      const paths = fbm(tx, ty, s + 333, 0.02);
+      const lakes = fbm(tx, ty, s + 444, 0.008);
       const edge = Math.min(tx, ty, cols - 1 - tx, rows - 1 - ty);
 
       let type: TileType = "grass";
 
-      if (edge < 2) {
-        type = "water";
-      } else if (n < 0.2) {
-        type = "water";
-      } else if (n < 0.26) {
-        type = "mud";
-      } else if (n2 > 0.76 && n > 0.38) {
-        type = "tree";
-      } else if (n2 > 0.7 && n > 0.35) {
+      if (edge === 0) {
         type = "rock";
-      } else if (n2 > 0.62) {
+      } else if (edge === 1) {
         type = "bush";
-      } else if (n > 0.52 && n3 < 0.35) {
-        type = "grass2";
-      } else if (n3 > 0.82) {
+      } else if (lakes < 0.055) {
+        type = "water";
+      } else if (lakes < 0.075) {
+        type = "mud";
+      } else if (detail > 0.78 && elev > 0.55) {
         type = "wire";
+      } else if (detail > 0.72 && elev > 0.62) {
+        type = "rock";
+      } else if (detail > 0.62 && moist > 0.48) {
+        type = "tree";
+      } else if (detail > 0.55 && moist > 0.42) {
+        type = "bush";
+      } else if (paths > 0.68 && detail < 0.5) {
+        type = "path";
+      } else if (elev > 0.58 && moist < 0.4) {
+        type = "grass2";
+      } else if (moist > 0.52) {
+        type = "grass";
       }
 
-      if (n3 > 0.7 && n > 0.4 && type !== "water") type = "path";
-
       grid[ty][tx] = type;
-      tiles.push({ type, x: tx * TILE_SIZE, y: ty * TILE_SIZE });
     }
   }
 
   const spawn = findSpawnPoint(grid, cols, rows);
+  const tiles: MapTile[] = [];
   for (let ty = 0; ty < rows; ty++) {
     for (let tx = 0; tx < cols; tx++) {
-      tiles[ty * cols + tx] = { type: grid[ty][tx], x: tx * TILE_SIZE, y: ty * TILE_SIZE };
+      tiles.push({ type: grid[ty][tx], x: tx * TILE_SIZE, y: ty * TILE_SIZE });
     }
   }
 
-  return { tiles, grid, spawnX: spawn.x, spawnY: spawn.y };
+  return { tiles, grid, spawnX: spawn.x, spawnY: spawn.y, seed: s };
 }
 
 export function isTileBlocking(type: TileType): boolean {
@@ -124,7 +154,7 @@ export function getTileSpeed(type: TileType): number {
 export function getTileFromGrid(grid: TileGrid, wx: number, wy: number): TileType {
   const tx = Math.floor(wx / TILE_SIZE);
   const ty = Math.floor(wy / TILE_SIZE);
-  if (ty < 0 || ty >= grid.length || tx < 0 || tx >= grid[0].length) return "water";
+  if (ty < 0 || ty >= grid.length || tx < 0 || tx >= grid[0].length) return "rock";
   return grid[ty][tx];
 }
 

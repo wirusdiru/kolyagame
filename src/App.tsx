@@ -45,7 +45,8 @@ export default function App() {
   useEffect(() => { refreshUser(); }, [refreshUser]);
   const [screenW, setScreenW] = useState(window.innerWidth);
   const [screenH, setScreenH] = useState(window.innerHeight);
-  const mapData = useMemo(() => generateMap(42), []);
+  const [mapSeed, setMapSeed] = useState(() => Date.now());
+  const mapData = useMemo(() => generateMap(mapSeed), [mapSeed]);
   const [hudTick, setHudTick] = useState(0);
 
   const [kx, setKx] = useState(mapData.spawnX);
@@ -272,9 +273,15 @@ export default function App() {
 
   const startGame = async () => {
     resetIds();
+    const newSeed = Date.now() + Math.floor(Math.random() * 1_000_000);
+    const newMap = generateMap(newSeed);
+    setMapSeed(newSeed);
+    tileGridRef.current = newMap.grid;
+    mapTilesRef.current = newMap;
+
     const up = await storage.getAppliedUpgrades();
     const applied = applyUpgrades({ maxHp: 150, waterCap: 75, speed: 3.8 }, up);
-    const cx = mapData.spawnX, cy = mapData.spawnY;
+    const cx = newMap.spawnX, cy = newMap.spawnY;
 
     kxRef.current = cx; kyRef.current = cy;
     sabXRef.current = cx + 60; sabYRef.current = cy + 40;
