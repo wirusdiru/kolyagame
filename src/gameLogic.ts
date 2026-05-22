@@ -117,7 +117,7 @@ export const ITEM_PICKUP_LABELS: Record<ItemType, string> = {
 export { isBossWave };
 
 export function getWaveTarget(wave: number, partySize = 1): number {
-  const base = 14 + wave * 6 + Math.floor(wave / 4) * 6;
+  const base = 24 + wave * 9 + Math.floor(wave / 3) * 8;
   return Math.floor(base * (1 + (partySize - 1) * 0.35));
 }
 

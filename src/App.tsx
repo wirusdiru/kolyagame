@@ -122,6 +122,8 @@ export default function App() {
 
   const keysRef = useRef<Set<string>>(new Set());
   const loopRef = useRef(0);
+  const gameStateRef = useRef(gameState);
+  gameStateRef.current = gameState;
   const tickRef = useRef(0);
   const kxRef = useRef(spawn.x);
   const kyRef = useRef(spawn.y);
@@ -368,9 +370,21 @@ export default function App() {
 
   // ===== GAME LOOP =====
   useEffect(() => {
-    if (gameState !== "playing") { cancelAnimationFrame(loopRef.current); return; }
+    if (gameState !== "playing" && gameState !== "paused") {
+      cancelAnimationFrame(loopRef.current);
+      return;
+    }
+
+    let running = true;
 
     const loop = () => {
+      if (!running) return;
+      if (gameStateRef.current === "paused") {
+        loopRef.current = requestAnimationFrame(loop);
+        return;
+      }
+
+      try {
       tickRef.current += 1;
       const tk = tickRef.current;
       const st = statsRef.current;
@@ -595,8 +609,8 @@ export default function App() {
       const doubleSpawn = st.wave % 3 === 0;
       if (!bossActiveRef.current) {
         spawnTimerRef.current += 1;
-        const spawnInterval = Math.max(28, 108 - st.wave * 3);
-        const spawnCount = doubleSpawn ? 2 : st.wave > 4 ? 2 : 1;
+        const spawnInterval = Math.max(18, 82 - st.wave * 4);
+        const spawnCount = doubleSpawn ? 4 : st.wave > 3 ? 3 : 2;
         if (spawnTimerRef.current >= spawnInterval && enemiesPerWaveRef.current < waveTargetRef.current) {
           spawnTimerRef.current = 0;
           for (let i = 0; i < spawnCount; i++) {
@@ -794,9 +808,7 @@ export default function App() {
               waveEnemiesKilledRef.current += 1;
               addFloat(en.x, en.y - 40, `+${pts}`, "#4f8");
               if (Math.random() < 0.28) {
-                const drop = spawnItem(en.x, en.y);
-                itemsRef.current = [...itemsRef.current, drop];
-                if (Math.random() < 0.35) addToInventory(drop.type);
+                itemsRef.current = [...itemsRef.current, spawnItem(en.x, en.y)];
               }
             }
             return false;
@@ -929,11 +941,20 @@ export default function App() {
         }
       }
 
-      loopRef.current = requestAnimationFrame(loop);
+      if (projRef.current.length > 280) {
+        projRef.current = projRef.current.slice(-220);
+      }
+      } catch (err) {
+        console.error("game loop", err);
+      }
+      if (running) loopRef.current = requestAnimationFrame(loop);
     };
 
     loopRef.current = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(loopRef.current);
+    return () => {
+      running = false;
+      cancelAnimationFrame(loopRef.current);
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameState, screenW, screenH]);
 
