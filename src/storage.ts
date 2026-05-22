@@ -71,6 +71,16 @@ export function isServerMode(): boolean {
   return isCloudEnabled;
 }
 
+const FRIENDS_SQL_HINT =
+  "В Supabase: SQL Editor → выполни файл supabase/friends.sql целиком → Settings → API → Reload schema.";
+
+function mapRpcError(message: string): string {
+  if (message.includes("Could not find the function")) {
+    return `Функции друзей не установлены на сервере. ${FRIENDS_SQL_HINT}`;
+  }
+  return message;
+}
+
 function saveSession(s: Session) {
   localStorage.setItem(SESSION_KEY, JSON.stringify(s));
 }
@@ -429,7 +439,7 @@ export async function sendFriendRequest(friendName: string): Promise<{ ok: boole
       p_password_hash: session.passwordHash,
       p_target: name,
     });
-    if (error) return { ok: false, error: error.message };
+    if (error) return { ok: false, error: mapRpcError(error.message) };
     const res = data as { ok: boolean; error?: string };
     if (!res.ok) return { ok: false, error: res.error ?? "Ошибка" };
     await syncFriendRequestsFromCloud(session);
@@ -492,7 +502,7 @@ export async function acceptFriendRequest(fromName: string): Promise<{ ok: boole
       p_from: fromName,
       p_accept: true,
     });
-    if (error) return { ok: false, error: error.message };
+    if (error) return { ok: false, error: mapRpcError(error.message) };
     const res = data as { ok: boolean; error?: string };
     if (!res.ok) return { ok: false, error: res.error ?? "Ошибка" };
     const fresh = await cloudFetchProfile(session);
@@ -538,7 +548,7 @@ export async function declineFriendRequest(fromName: string): Promise<{ ok: bool
       p_from: fromName,
       p_accept: false,
     });
-    if (error) return { ok: false, error: error.message };
+    if (error) return { ok: false, error: mapRpcError(error.message) };
     await syncFriendRequestsFromCloud(session);
     return { ok: true };
   }

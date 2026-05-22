@@ -1,5 +1,14 @@
 -- Друзья: заявки, статус «в игре», последний визит
--- Supabase SQL Editor → Run (после schema.sql)
+-- Supabase → SQL Editor → вставь ВЕСЬ файл → Run
+-- Потом: Project Settings → API → Reload schema (или подожди 1–2 мин)
+
+-- Пересоздание RPC (если уже пробовал — не страшно)
+drop function if exists public.get_users_status(text[]);
+drop function if exists public.get_friend_requests(text, text);
+drop function if exists public.cancel_friend_request(text, text, text);
+drop function if exists public.respond_friend_request(text, text, text, boolean);
+drop function if exists public.send_friend_request(text, text, text);
+drop function if exists public.set_presence(text, text, boolean);
 
 alter table profiles add column if not exists last_seen_at timestamptz not null default now();
 alter table profiles add column if not exists is_playing boolean not null default false;
@@ -18,7 +27,7 @@ create index if not exists friend_requests_to_idx on friend_requests (to_usernam
 alter table friend_requests enable row level security;
 create policy "no direct friend_requests" on friend_requests for all using (false);
 
-create or replace function set_presence(
+create or replace function public.set_presence(
   p_username text, p_password_hash text, p_is_playing boolean
 ) returns jsonb language plpgsql security definer set search_path = public as $$
 declare u text := lower(trim(p_username));
@@ -32,7 +41,7 @@ begin
 end;
 $$;
 
-create or replace function send_friend_request(
+create or replace function public.send_friend_request(
   p_username text, p_password_hash text, p_target text
 ) returns jsonb language plpgsql security definer set search_path = public as $$
 declare u text := lower(trim(p_username));
@@ -58,7 +67,7 @@ begin
 end;
 $$;
 
-create or replace function respond_friend_request(
+create or replace function public.respond_friend_request(
   p_username text, p_password_hash text, p_from text, p_accept boolean
 ) returns jsonb language plpgsql security definer set search_path = public as $$
 declare u text := lower(trim(p_username));
@@ -98,7 +107,7 @@ begin
 end;
 $$;
 
-create or replace function cancel_friend_request(
+create or replace function public.cancel_friend_request(
   p_username text, p_password_hash text, p_target text
 ) returns jsonb language plpgsql security definer set search_path = public as $$
 declare u text := lower(trim(p_username));
@@ -109,7 +118,7 @@ begin
 end;
 $$;
 
-create or replace function get_friend_requests(
+create or replace function public.get_friend_requests(
   p_username text, p_password_hash text
 ) returns jsonb language plpgsql security definer set search_path = public as $$
 declare u text := lower(trim(p_username));
@@ -131,7 +140,7 @@ begin
 end;
 $$;
 
-create or replace function get_users_status(p_usernames text[])
+create or replace function public.get_users_status(p_usernames text[])
 returns jsonb language plpgsql security definer set search_path = public as $$
 begin
   return coalesce((
@@ -149,9 +158,11 @@ begin
 end;
 $$;
 
-grant execute on function set_presence(text, text, boolean) to anon, authenticated;
-grant execute on function send_friend_request(text, text, text) to anon, authenticated;
-grant execute on function respond_friend_request(text, text, text, boolean) to anon, authenticated;
-grant execute on function cancel_friend_request(text, text, text) to anon, authenticated;
-grant execute on function get_friend_requests(text, text) to anon, authenticated;
-grant execute on function get_users_status(text[]) to anon, authenticated;
+grant execute on function public.set_presence(text, text, boolean) to anon, authenticated;
+grant execute on function public.send_friend_request(text, text, text) to anon, authenticated;
+grant execute on function public.respond_friend_request(text, text, text, boolean) to anon, authenticated;
+grant execute on function public.cancel_friend_request(text, text, text) to anon, authenticated;
+grant execute on function public.get_friend_requests(text, text) to anon, authenticated;
+grant execute on function public.get_users_status(text[]) to anon, authenticated;
+
+notify pgrst, 'reload schema';
